@@ -1,0 +1,3 @@
+Stop-ScheduledTask -TaskName 'BGI_S1Run' -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -match 'door_clicker\.ps1'} | ForEach-Object {Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue}
+"$(Get-Date -Format o) stopped door clicker" | Out-File C:\Users\djf20\agent_stop_door.txt -Encoding utf8

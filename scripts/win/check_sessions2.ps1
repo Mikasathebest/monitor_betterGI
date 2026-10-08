@@ -1,0 +1,1 @@
+Get-Process YuanShen,BetterGI -ErrorAction SilentlyContinue | Select-Object Name,Id,SessionId,StartTime | Format-Table -AutoSize | Out-String | Set-Content C:\Users\djf20\proc_sessions2.txt -Encoding UTF8

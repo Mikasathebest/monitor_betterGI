@@ -1,0 +1,1 @@
+Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=(Get-Date).AddMinutes(-10)} -ErrorAction SilentlyContinue | Where-Object {$_.Message -match 'YuanShen|Genshin'} | Select-Object -First 10 TimeCreated,Id,ProviderName,Message | Format-List

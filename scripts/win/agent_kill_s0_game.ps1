@@ -1,0 +1,1 @@
+Get-CimInstance Win32_Process | Where-Object {($_.Name -eq 'YuanShen.exe') -or ($_.Name -eq 'powershell.exe' -and $_.CommandLine -match 'agent_launch_monitor\.ps1')} | ForEach-Object {Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue}

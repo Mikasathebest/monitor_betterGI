@@ -1,0 +1,9 @@
+// 培养队轮换 v3 (2026-09-15): 用户指定轮换 + 木偶长按重击
+// 队伍: 玛薇卡 / 阿罗夏 / 奥黛塔 / 桑多涅
+// 轮换: 火神E转圈(挂火) → 奥黛塔EQE → 阿罗夏EQ → 火神Q → 木偶E+长按重击×2+Q
+// e(hold)=长按战技; charge(秒)=按住普攻(重击); click(middle)=镜头回正; check=敌人死光提前结束本行
+玛薇卡 e(hold),check
+奥黛塔 e,q,e,check
+阿罗夏 e,q,check
+玛薇卡 q,check
+桑多涅 click(middle),e,charge(2.2),charge(2.2),q,check
