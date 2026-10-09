@@ -3,6 +3,14 @@
 param([bool]$Complete = $false)
 $ErrorActionPreference = 'Continue'
 $log = 'C:\Users\djf20\cycle_log.txt'
+# 每日收集标记 (书签续跑机制):
+#   collection_done.txt     = 今日日期 → 今日已启动收集, 下场从书签续跑
+#   collection_finished.txt = 今日日期 → 今日已全部跑完, 下场只跑体力监控
+#   collection_started.flag = 本场启动了收集大组 → 下线时据此更新上述标记
+$collectDoneFile = 'C:\Users\djf20\collection_done.txt'
+$collectFinishedFile = 'C:\Users\djf20\collection_finished.txt'
+$collectStartFlag = 'C:\Users\djf20\collection_started.flag'
+$base = 'D:\projects\betterGI'
 function Log($msg) { "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg" | Out-File $log -Append -Encoding utf8 }
 
 Log "=== 会话下线 (Complete=$Complete) ==="
@@ -25,9 +33,7 @@ Stop-Process -Name BetterGI -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 Log "游戏与 BGI 已关闭"
 
-# 1.5 大组刚跑完? (09-15 07:30 竞速实证: SessionEnd 比组完成标记早 2 秒, 误写书签 idx 79)
-# 日志尾 3 分钟内出现 "配置组 ... 执行结束" → 视为跑完, 走 Complete 清书签
-$base = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0'
+# 1.5 大组刚跑完? (检测日志尾 3 分钟内 "配置组 ... 执行结束" → 视为跑完, 走 Complete 清书签)
 if (-not $Complete) {
   try {
     $f = Get-ChildItem "$base\log\better-genshin-impact*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -50,5 +56,33 @@ if (-not $Complete) {
 $arg = if ($Complete) { 'CLEAR' } else { '' }
 $out = & python 'C:\Users\djf20\set_bookmark.py' $arg 2>&1
 $out | ForEach-Object { Log "bookmark: $_" }
+
+# 3. 每日收集标记更新: 若本场启动了收集大组
+#    - 大组跑完 (Complete=True): 写 collection_finished.txt=今日 → 下场只跑体力监控
+#    - 到点下线 (Complete=False): 写 collection_done.txt=今日 → 下场从书签续跑
+if (Test-Path $collectStartFlag) {
+  $today = (Get-Date).ToString('yyyy-MM-dd')
+  Remove-Item $collectStartFlag -Force -ErrorAction SilentlyContinue
+  if ($Complete) {
+    Set-Content $collectFinishedFile $today -Encoding UTF8
+    Set-Content $collectDoneFile $today -Encoding UTF8
+    Log "今日收集已全部跑完, 写入完成标记: $today (下场只跑体力监控)"
+  } else {
+    Set-Content $collectDoneFile $today -Encoding UTF8
+    # 读书签进度写入日志
+    try {
+      $cfgObj = Get-Content "$base\User\config.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+      $groupObj = Get-Content "$base\User\ScriptGroup\全自动循环.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+      $totalTasks = $groupObj.projects.Count
+      $bk = 0
+      if ($cfgObj.nextScheduledTask -and $cfgObj.nextScheduledTask.Count -gt 0) {
+        $bk = [int]$cfgObj.nextScheduledTask[0].Item2
+      }
+      Log "今日收集进度: 书签 idx $bk / $totalTasks, 下场续跑"
+    } catch {
+      Log "今日收集已启动 (书签续跑)"
+    }
+  }
+}
 
 Log "=== 下线完成 (下次上线: BGI_Session 定时触发) ==="
