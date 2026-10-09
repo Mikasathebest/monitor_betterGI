@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CV 视觉模型封装: nvidia/qwen/eccn-qwen3.5-122b-a10b (chat completions, 支持图像输入)
+"""CV 视觉模型封装: 默认 gemini-3.5-flash, 可用 VISION_MODEL 覆盖 (chat completions, 支持图像输入)
 给主 Agent 提供"看懂游戏画面"的能力: 游戏状态/卡点/当前队伍/角色识别
 """
 import base64

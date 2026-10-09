@@ -18,7 +18,7 @@ MODELS = [
     "us/gcp/google/eccn-gemini-3.5-flash",
     "nvidia/qwen/eccn-qwen3.8-flash-next",
     "us/azure/openai/eccn-gpt-5.5",
-    "nvidia/qwen/eccn-qwen3.5-122b-a10b",  # 现役, 作对照
+    "nvidia/qwen/eccn-qwen3.5-122b-a10b",  # 前任, 作对照
 ]
 
 QUESTION = (

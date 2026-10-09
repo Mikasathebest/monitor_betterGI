@@ -16,7 +16,6 @@ git pull --ff-only origin main
 if (Test-Path requirements.txt) {
     pip install -r requirements.txt --quiet
 }
-pip install -e . --quiet
 
 Write-Host "✓ 已同步到最新代码"
 if ($dirty) { Write-Host "提示: 之前有本地改动被 stash, 需要时用 'git stash pop' 恢复" }

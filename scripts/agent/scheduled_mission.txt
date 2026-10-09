@@ -3,7 +3,7 @@
 1) 原神开着吗? 没开 → 启动 (E:\YS\miHoYo Launcher\games\Genshin Impact Game\YuanShen.exe), 安静等 2 分钟
 2) 进门了吗? screenshot CV 判断。没进 → run_s1_hidden.ps1 -ScriptName door_clicker2.ps1 (隐藏 6s 盲点), 每 30s CV 验证, 进了立即杀 door_clicker2 进程。门上有沙漏=连接中, 等沙漏消失再点。8 分钟进不去 → 杀游戏重开, 回到第 1 步
 3) 进了 → screenshot 确认无月卡/活动弹窗 (有就 esc_s1.ps1 关掉) → run_s1.ps1 跑 uia_start_capture.ps1 拉起 BGI+截图器 → send_f9.ps1 触发一条龙 → 看 BGI 日志确认真跑 (有传送/路径点坐标; 若任务 ~9s 连环完成且拾取=0 是假跑, 停下来诊断)
-4) 一条龙 (合成/每日/邮件/尘歌壶/地脉花, 已去钓鱼) 跑完 → session_online 会自动启动"全自动循环"农场组 (593条: 白铁78+遗迹守卫15+水晶/紫晶/盗宝团/特产等) → 确认农场组在跑 (日志有 地图追踪/开始执行) → 跑完或到点 → 关游戏下线, 等下一场次
+4) 一条龙 (合成/每日/邮件/尘歌壶/地脉花, 已去钓鱼) 跑完 → session_online 会自动启动"全自动循环"农场组 (593条: 白铁78+遗迹守卫15+水晶/紫晶/盗宝团/特产等) → 确认农场组在真收材料: material_report(since=本场次开始时间), 假跑告警/fake 占多数 → 按错题本 §6 处理 → 跑完或到点 → 关游戏下线, 等下一场次
 
 约束:
 - 点击/UI 操作一律 run_s1_hidden.ps1 (隐藏, 不抢焦点); 只有 UIA 用 run_s1.ps1
@@ -11,3 +11,4 @@
 - 每次 Session 1 操作后等 30-60s 看日志再下一步, 不要密集操作
 - 卡住先查 docs/betterGI/错题本.md 再动手
 - 写结论到 docs/betterGI/logs/ 按日期命名, 收益追加到 docs/betterGI/收益.md
+- 每场结束前用 material_report(since=场次开始时间) 出一份报告写进 logs/ 结论; 每天第一个场次顺带 material_report(date=昨天) 存基线, 物品统计追加到 docs/betterGI/收益.md
