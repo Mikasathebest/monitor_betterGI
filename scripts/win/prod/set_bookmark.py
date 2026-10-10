@@ -40,11 +40,11 @@ if last_route:
             np = projs[nxt]
             bookmark = [{
                 "Item1": "全自动循环",
-                "Item2": nxt + 1,           # 1-based index
+                "Item2": nxt,               # 0-based, BGI 源码: nst.Item2 == item.Index (10-10 修复, 原 nxt+1 永远匹配不上)
                 "Item3": np.get("folderName", ""),
                 "Item4": np.get("name", ""),
             }]
-            log(f"书签: idx {nxt+1} = {np.get('name')}")
+            log(f"书签: idx {nxt} = {np.get('name')}")
             break
     if not bookmark:
         log("路线不在组内, 从头开始")
