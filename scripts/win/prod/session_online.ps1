@@ -1,4 +1,4 @@
-# 定时上线会话 v3 (2026-09-17: 去钓鱼 + 接采矿组):
+﻿# 定时上线会话 v3 (2026-09-17: 去钓鱼 + 接采矿组):
 #   手动游戏保护 → 排程下线 → 杀残留 → BGI+截图器 → 游戏 → 2min安静+隐藏点击器进门 → F9
 #   → 等一条龙流程完成标记 (轮询, 上限100min) → UIA 启动"白铁优先"采矿组 → RUNNING
 # 关键设计:
@@ -62,6 +62,10 @@ function Skip-IfRelogin($stage) {
 
 Log "=== 定时上线会话开始 (v3) ==="
 
+# 0.00 午场守卫: 12:00-16:59 之间的定时触发直接跳过 (用户已去掉午场, 只保留早场 04:15 + 晚场 23:00)
+$h = (Get-Date).Hour
+if ($h -ge 12 -and $h -lt 17) { Log "午场已取消 (当前 $h 点), 本次触发跳过"; exit 0 }
+
 # 0.01 实例锁
 $me = $PID
 $dups = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object {
@@ -85,8 +89,8 @@ if ($oldPhase -eq 'OFFLINE' -and $ys0 -and -not $bgi0) {
 # 0.1 代理自愈
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\fix_proxy.ps1 | Out-Null
 
-# 1. 排程 3h 后强制下线 (安全网)
-$off = (Get-Date).AddHours(3)
+# 1. 排程 5h 后强制下线 (安全网)
+$off = (Get-Date).AddHours(5)
 schtasks /create /tn BGI_SessionEnd /tr "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\cycle_offline.ps1" /sc once /st $off.ToString('HH:mm') /sd $off.ToString('dd/MM/yyyy') /rl highest /f | Out-Null
 Log "已预排程下线: $($off.ToString('MM-dd HH:mm'))"
 
