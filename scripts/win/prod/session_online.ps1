@@ -168,7 +168,9 @@ else { Log "警告: 等完成标记超时 (100 分钟), 仍尝试启动采矿组
 #     - 今日已全部跑完 (collection_finished.txt=今日) → 只跑体力监控
 #     - 今日已启动过但未跑完 → 启动全自动循环, BGI 自动从 config.json 的 nextScheduledTask 书签续跑
 #     - 今日首场 → 清空书签从头启动全自动循环
-$today = (Get-Date).ToString('yyyy-MM-dd')
+# 采集日: 以凌晨4点(游戏刷新)为界, 00:00-03:59 属于前一天 — 保证跨午夜场次(如 00:30)不误判为新的一天而全量重跑
+$nowDt = Get-Date
+$today = if ($nowDt.Hour -lt 4) { $nowDt.AddDays(-1).ToString('yyyy-MM-dd') } else { $nowDt.ToString('yyyy-MM-dd') }
 
 # 读组总任务数 & 书签 (nextScheduledTask[0].Item2 是 1-based index)
 $groupObj = Get-Content $groupJson -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -204,7 +206,7 @@ if ($finishedToday) {
     if ($doneDate -eq $today) { $startedBefore = $true }
   }
   if ($startedBefore -and $bookmarkIdx -gt 0 -and $bookmarkIdx -lt $totalTasks) {
-    Log "今日收集续跑: 从书签 idx $bookmarkIdx / $totalTasks 继续 (全自动循环大组)"
+    Log "今日收集续跑: 从书签 idx $bookmarkIdx / $totalTasks 继续"
   } elseif ($startedBefore -and $bookmarkIdx -eq 0) {
     # 今日已启动过但书签为空: 看门狗恢复或 BetterGI_Run 中途重开场次, 从今日日志推导断点
     # (10-09 教训: 13:00 场次重启后从头重跑, 重复收集松珀香/云岩裂叶/敌人约 1 小时)
@@ -216,14 +218,30 @@ if ($finishedToday) {
     & python 'C:\Users\djf20\set_bookmark.py' CLEAR 2>&1 | ForEach-Object { Log "bookmark: $_" }
   }
   Set-Content $collectStartFlag $today -Encoding UTF8   # 标记本场启动了收集, 下线时据此更新标记
+  # 选启动组: 书签>0 且续跑组文件存在 → 启动"续跑收集组"子组 (BGI nextScheduledTask 反序列化 bug 规避);
+  # 否则启动主组"全自动循环" (书签/续跑组由 set_bookmark.py 在下线时维护)
+  $groupMatch = '全自动循环'
+  $resumeGroupFile = 'D:\projects\betterGI\User\ScriptGroup\续跑收集组.json'
+  $bk = 0
+  try {
+    $cfgNow = Get-Content 'D:\projects\betterGI\User\config.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+    $nstArr = @($cfgNow.nextScheduledTask)
+    if ($nstArr.Count -gt 0) { $bk = [int]$nstArr[0].Item2 }
+  } catch { Log "读取书签失败: $($_.Exception.Message)" }
+  if ($bk -gt 0 -and (Test-Path $resumeGroupFile)) {
+    $groupMatch = '续跑收集组'
+    Log "续跑组文件存在 (书签 idx $bk), 将启动子组: 续跑收集组"
+  } else {
+    Log "无续跑组 (书签 idx $bk), 将启动主组: 全自动循环"
+  }
   for ($i = 1; $i -le 2; $i++) {
-    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_group_named.ps1 -NameMatch '全自动循环'
+    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_group_named.ps1 -NameMatch $groupMatch
     Start-Sleep -Seconds 30
     $new = Read-NewLog
-    if ($new -match '地图追踪|开始执行|配置组') { Log "农场组已启动 (第 $i 次尝试)"; break }
+    if ($new -match '地图追踪|开始执行|配置组') { Log "农场组已启动 (第 $i 次尝试): $groupMatch"; break }
     Log "第 $i 次启动农场组未见日志活动, 重试"
   }
-  $tailMsg = '全自动循环收集大组运行中 (书签续跑)'
+  $tailMsg = "收集大组运行中 ($groupMatch, 书签续跑)"
 }
 
 # 11. PHASE=RUNNING: 看门狗开始监护

@@ -1,4 +1,4 @@
-﻿# 会话下线: 保存进度书签 → 杀游戏+BGI (不自我续链; 下次上线由 BGI_Session 每日定时触发)
+# 会话下线: 保存进度书签 → 杀游戏+BGI (不自我续链; 下次上线由 BGI_Session 每日定时触发)
 # -Complete:$true = 大组跑完(清空书签, 下轮从头); 默认 = 到点下线(保存书签续跑)
 param([bool]$Complete = $false)
 $ErrorActionPreference = 'Continue'
@@ -61,7 +61,9 @@ $out | ForEach-Object { Log "bookmark: $_" }
 #    - 大组跑完 (Complete=True): 写 collection_finished.txt=今日 → 下场只跑体力监控
 #    - 到点下线 (Complete=False): 写 collection_done.txt=今日 → 下场从书签续跑
 if (Test-Path $collectStartFlag) {
-  $today = (Get-Date).ToString('yyyy-MM-dd')
+  # 采集日: 以凌晨4点(游戏刷新)为界, 00:00-03:59 属于前一天 (与 session_online.ps1 一致)
+  $nowDt = Get-Date
+  $today = if ($nowDt.Hour -lt 4) { $nowDt.AddDays(-1).ToString('yyyy-MM-dd') } else { $nowDt.ToString('yyyy-MM-dd') }
   Remove-Item $collectStartFlag -Force -ErrorAction SilentlyContinue
   if ($Complete) {
     Set-Content $collectFinishedFile $today -Encoding UTF8
