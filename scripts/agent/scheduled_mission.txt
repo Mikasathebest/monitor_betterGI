@@ -1,4 +1,4 @@
-场次巡检 (每天 04:15 / 23:00 两场, 每场 5h 窗口)。核心状态机就四步, 按顺序走:
+场次巡检 (每天 3 场: 早 04:15 窗口 5h / 午 13:00 窗口 4h / 晚 23:00 窗口 3h, 跑完提前下线)。核心状态机就四步, 按顺序走:
 
 1) 原神开着吗? 没开 → 启动 (E:\YS\miHoYo Launcher\games\Genshin Impact Game\YuanShen.exe), 安静等 2 分钟
 2) 进门了吗? screenshot CV 判断。没进 → run_s1_hidden.ps1 -ScriptName door_clicker2.ps1 (隐藏 6s 盲点), 每 30s CV 验证, 进了立即杀 door_clicker2 进程。门上有沙漏=连接中, 等沙漏消失再点。8 分钟进不去 → 杀游戏重开, 回到第 1 步

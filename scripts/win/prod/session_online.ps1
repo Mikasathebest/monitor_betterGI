@@ -62,9 +62,13 @@ function Skip-IfRelogin($stage) {
 
 Log "=== 定时上线会话开始 (v3) ==="
 
-# 0.00 午场守卫: 12:00-16:59 之间的定时触发直接跳过 (用户已去掉午场, 只保留早场 04:15 + 晚场 23:00)
+# 0.00 场次时长 (2026-10-12 用户定: 恢复午场; 早 5h / 午 4h / 晚 3h, 每天最长 12h; 跑完由看门狗提前下线)
+#   按触发时刻归属: 04-11 点=早场, 12-17 点=午场, 其余=晚场 (晚场 23:00+3h=02:00, 不压早场)
 $h = (Get-Date).Hour
-if ($h -ge 12 -and $h -lt 17) { Log "午场已取消 (当前 $h 点), 本次触发跳过"; exit 0 }
+if ($h -ge 4 -and $h -lt 12) { $sessName = '早场'; $sessHours = 5 }
+elseif ($h -ge 12 -and $h -lt 18) { $sessName = '午场'; $sessHours = 4 }
+else { $sessName = '晚场'; $sessHours = 3 }
+Log "场次: $sessName, 窗口 ${sessHours}h"
 
 # 0.01 实例锁
 $me = $PID
@@ -89,8 +93,8 @@ if ($oldPhase -eq 'OFFLINE' -and $ys0 -and -not $bgi0) {
 # 0.1 代理自愈
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\fix_proxy.ps1 | Out-Null
 
-# 1. 排程 5h 后强制下线 (安全网)
-$off = (Get-Date).AddHours(5)
+# 1. 排程 场次时长 后强制下线 (安全网)
+$off = (Get-Date).AddHours($sessHours)
 schtasks /create /tn BGI_SessionEnd /tr "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\cycle_offline.ps1" /sc once /st $off.ToString('HH:mm') /sd $off.ToString('dd/MM/yyyy') /rl highest /f | Out-Null
 Log "已预排程下线: $($off.ToString('MM-dd HH:mm'))"
 
