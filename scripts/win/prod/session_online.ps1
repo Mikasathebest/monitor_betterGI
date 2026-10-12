@@ -1,4 +1,4 @@
-﻿# 定时上线会话 v3 (2026-09-17: 去钓鱼 + 接采矿组):
+# 定时上线会话 v3 (2026-09-17: 去钓鱼 + 接采矿组):
 #   手动游戏保护 → 排程下线 → 杀残留 → BGI+截图器 → 游戏 → 2min安静+隐藏点击器进门 → F9
 #   → 等一条龙流程完成标记 (轮询, 上限100min) → UIA 启动"白铁优先"采矿组 → RUNNING
 # 关键设计:
@@ -218,7 +218,7 @@ if ($finishedToday) {
     $bkOut = & python 'C:\Users\djf20\set_bookmark.py' 2>&1
     $bkOut | ForEach-Object { Log "bookmark: $_" }
   } else {
-    Log "今日收集从头开始 (全自动循环大组, 共 $totalTasks 条, 含松珀香/云岩裂叶)"
+    Log "今日收集从头开始 (全自动循环大组, 共 $totalTasks 条)"
     & python 'C:\Users\djf20\set_bookmark.py' CLEAR 2>&1 | ForEach-Object { Log "bookmark: $_" }
   }
   Set-Content $collectStartFlag $today -Encoding UTF8   # 标记本场启动了收集, 下线时据此更新标记
