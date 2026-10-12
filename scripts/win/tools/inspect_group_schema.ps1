@@ -1,6 +1,6 @@
 # 查 JS 脚本设置持久化方式 + 大组钓鱼段起始索引
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$base = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0'
+$base = 'D:\projects\betterGI'
 
 Write-Output '=== 树脂监控 文件夹内容 (看设置存哪) ==='
 Get-ChildItem "$base\User\JsScript\树脂监控" | Select-Object Name, Length

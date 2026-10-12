@@ -6,9 +6,11 @@
   - 日志时间段 (间隔 >5min 切段) 求有效运行时长
 在其之上加了本项目需要的: 按路线统计、假跑/空路线识别、与历史基线对比找"坏掉的路线"
 
-日志格式 (Serilog, 一条两行; 也兼容消息与头在同一行):
-  [20:38:12.345] [INF] BetterGenshinImpact.Service.ScriptService
-  开始执行地图追踪任务: "09-柔灯铃"
+日志格式 (Serilog, 一条两行; 也兼容消息与头在同一行), 2026-10 实测:
+  [07:45:43.777] [INF] [Primary:S3:P12080:T1791749708481] BetterGenshinImpact.Service.ScriptService
+  → 开始执行地图追踪任务: "01-嘟嘟莲-清泉镇-11个.json"
+  ...
+  → 脚本执行结束: "01-嘟嘟莲-清泉镇-11个.json", 耗时: 0分0.057秒
 
 用法:
   python3 scripts/bgilog.py <日志或导出文件> [--date 2026-10-09] [--since 13:00] [--save] [--json]
@@ -30,12 +32,14 @@ HEADER = re.compile(r"^\[(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?\] \[(\w+)\]\s?(.*)$")
 GROUP_START = re.compile(r'配置组 "([^"]*)" 加载完成，共(\d+)个脚本，开始执行')
 GROUP_END = re.compile(r'配置组 "([^"]*)" 执行结束')
 TASK_START = re.compile(r'开始执行(\S*?)[:：]\s*"([^"]+)"')
-TASK_END = re.compile(r'执行结束[:：]\s*"([^"]+)"')
+TASK_END = re.compile(r'执行结束[:：]\s*"([^"]+)"(?:.*?耗时[:：]\s*(\d+)分([\d.]+)秒)?')
 PICKUP = re.compile(r'交互或拾取[:：]\s*"?([^"\n]+?)"?\s*$')
 IGNORED_ITEMS = {"调查", "直接拾取"}  # 非物品的交互, 同 CanLiang
 ONEDRAGON_END = "一条龙和配置组任务结束"
 ERROR_LEVELS = {"ERR", "ERROR", "FTL", "FATAL"}
-ERROR_HINTS = re.compile(r"未能返回主界面|脱困|卡住|超时|异常")
+# 不含裸"超时": "超时或视野内没有可拾取物品，结束扫描" 是正常的拾取扫描结束 (实测一天 175 次)
+ERROR_HINTS = re.compile(r"未能返回主界面|脱困|卡住|卡死|战斗超时|异常|无法执行")
+PATHING_KIND = "地图追踪任务"  # 只有路线任务按 假跑/空路线 判定; JS 脚本(如树脂监控)本来就短
 SEGMENT_GAP = 300          # 日志间隔超过 5 分钟视为两段运行 (同 CanLiang)
 FAKE_RUN_SECONDS = 20      # 错题本 §6: 健康路线应 >20s 且有传送
 MISSING_ROUTE_SECONDS = 1  # 伊安珊文档: 路线文件不存在 = 0.003s 假成功
@@ -55,13 +59,17 @@ class TaskRun:
     group: str | None
     start: int
     end: int | None = None
+    exact_seconds: float | None = None  # 日志结束行自带的 "耗时: X分Y秒", 比时间戳差更准
+    reason: str | None = None           # 任务期间第一条错误, 解释 missing/fake 的原因
     pickups: Counter = field(default_factory=Counter)
     teleports: int = 0
     fights: int = 0
     errors: int = 0
 
     @property
-    def duration(self) -> int | None:
+    def duration(self) -> float | None:
+        if self.exact_seconds is not None:
+            return self.exact_seconds
         return None if self.end is None else self.end - self.start
 
     @property
@@ -70,6 +78,8 @@ class TaskRun:
         d = self.duration
         if d is None:
             return "running"
+        if self.kind != PATHING_KIND:
+            return "script"
         if d <= MISSING_ROUTE_SECONDS:
             return "missing"
         if d < FAKE_RUN_SECONDS and self.teleports == 0 and not self.pickups:
@@ -143,6 +153,8 @@ def analyze(text: str, since: str | None = None) -> dict:
             tasks.append(cur_task)
         elif (m := TASK_END.search(msg)) and cur_task and cur_task.name == m[1]:
             cur_task.end = e.t
+            if m[2] is not None:
+                cur_task.exact_seconds = round(int(m[2]) * 60 + float(m[3]), 3)
         elif m := PICKUP.search(msg):
             item = m[1].strip()
             if item not in IGNORED_ITEMS:
@@ -163,6 +175,8 @@ def analyze(text: str, since: str | None = None) -> dict:
             errors[_error_key(msg)] += 1
             if cur_task and cur_task.end is None:
                 cur_task.errors += 1
+                if cur_task.reason is None:
+                    cur_task.reason = msg.splitlines()[-1][:120]
 
     verdicts = Counter(t.verdict for t in tasks)
     return {
@@ -263,7 +277,11 @@ def to_markdown(report: dict, regressions: list[dict] | None = None, title: str 
     suspects = [t for t in report["tasks"] if t["verdict"] in ("fake", "missing")]
     if suspects:
         L.append(f"\n**假跑/缺失路线 {len(suspects)} 条**（前 10）：")
-        L += [f"- {t['start']} {t['name']}（{t['duration']}s，{t['verdict']}）" for t in suspects[:10]]
+        reasons = Counter(_error_key(t["reason"]) for t in suspects if t["reason"])
+        if reasons:
+            L.append("原因汇总：" + "；".join(f"{k} ×{n}" for k, n in reasons.most_common(5)))
+        L += [f"- {t['start']} {t['name']}（{t['duration']:g}s，{t['verdict']}）"
+              + (f"：{t['reason']}" if t["reason"] else "") for t in suspects[:10]]
     if regressions:
         L.append(f"\n**比历史基线明显变少的路线 {len(regressions)} 条**（可能路线失效/被挡/矿点未刷新）：")
         L += [f"- {r['start']} {r['name']}：本次 {r['got']}，历史中位 {r['median']:g}" for r in regressions[:15]]

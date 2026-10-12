@@ -6,7 +6,7 @@ param(
   [string]$LogName = ''  # 例: 20260914 查指定日; 默认最新
 )
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$logDir = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0\log'
+$logDir = 'D:\projects\betterGI\log'
 if ($LogName) {
   $f = Get-Item "$logDir\better-genshin-impact$LogName.log"
 } else {

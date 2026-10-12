@@ -84,6 +84,44 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(bgilog.active_seconds([0, 30, 60, 660, 700]), 100)
 
 
+# 2026-10-12 真实日志片段 (头行带 [Primary:...] 前缀, 消息带 "→", 结束行带耗时)
+P = "[Primary:S3:P12080:T1791749708481]"
+REAL = f"""[05:26:32.100] [INF] {P} {SVC}
+→ 开始执行JS脚本: "树脂监控"
+[05:26:37.200] [INF] {P} {SVC}
+→ 脚本执行结束: "树脂监控", 耗时: 0分5.1秒
+[07:45:43.700] [INF] {P} {SVC}
+→ 开始执行地图追踪任务: "01-嘟嘟莲-清泉镇-11个.json"
+[07:45:43.720] [WRN] {P} BetterGenshinImpact.GameTask.AutoPathing.PathExecutor
+此路径存在纳西妲收集动作，队伍中没有纳西妲角色，无法执行此路径！
+[07:45:43.777] [INF] {P} {SVC}
+→ 脚本执行结束: "01-嘟嘟莲-清泉镇-11个.json", 耗时: 0分0.057秒
+[07:46:00.000] [INF] {P} {SVC}
+→ 开始执行地图追踪任务: "A05-紫晶块-稻妻-鸣神岛-荒海-8~9个.json"
+[07:46:40.000] [INF] {P} BetterGenshinImpact.GameTask.AutoPick.AutoPickTrigger
+交互或拾取："紫晶块"
+[07:46:52.000] [INF] {P} BetterGenshinImpact.GameTask.AutoPick.AutoPickTrigger
+超时或视野内没有可拾取物品，结束扫描
+[07:47:05.000] [INF] {P} {SVC}
+→ 脚本执行结束: "A05-紫晶块-稻妻-鸣神岛-荒海-8~9个.json", 耗时: 1分4.5秒
+"""
+
+
+class RealFormatTest(unittest.TestCase):
+    def test_real_format(self):
+        r = bgilog.analyze(REAL)
+        t = {x["name"]: x for x in r["tasks"]}
+        self.assertEqual(t["树脂监控"]["verdict"], "script")  # JS 脚本不按假跑判
+        nahida = t["01-嘟嘟莲-清泉镇-11个.json"]
+        self.assertEqual((nahida["verdict"], nahida["duration"]), ("missing", 0.057))
+        self.assertIn("纳西妲", nahida["reason"])
+        ok = t["A05-紫晶块-稻妻-鸣神岛-荒海-8~9个.json"]
+        self.assertEqual((ok["verdict"], ok["duration"], ok["pickups"]), ("ok", 64.5, {"紫晶块": 1}))
+        self.assertFalse(any("结束扫描" in k for k in r["top_errors"]))  # 正常扫描结束不算异常
+        md = bgilog.to_markdown(r)
+        self.assertIn("原因汇总", md)
+
+
 class BaselineTest(unittest.TestCase):
     def test_regression_detected(self):
         with tempfile.TemporaryDirectory() as d:

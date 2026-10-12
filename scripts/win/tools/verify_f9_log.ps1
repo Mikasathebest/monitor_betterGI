@@ -1,5 +1,5 @@
 Start-Sleep -Seconds 15
-$dir = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0\log'
+$dir = 'D:\projects\betterGI\log'
 $f = Get-ChildItem -LiteralPath $dir -File -Filter '*.log' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $f) { Write-Output 'NO_LOG'; exit }
 Write-Output ('FILE=' + $f.FullName)

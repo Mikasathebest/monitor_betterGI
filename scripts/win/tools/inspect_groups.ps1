@@ -1,6 +1,6 @@
 # 查看: 一条龙配置的续跑配置组 + 各 ScriptGroup 的任务清单 (找钓鱼/采矿/白铁块)
 $ErrorActionPreference = 'Continue'
-$base = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0'
+$base = 'D:\projects\betterGI'
 $out = 'C:\Users\djf20\groups_inspect.txt'
 $sb = New-Object System.Text.StringBuilder
 

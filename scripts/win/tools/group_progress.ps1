@@ -1,6 +1,6 @@
 # 当前组进度: 今天 16:50 后的路线执行情况
 $ErrorActionPreference = 'Continue'
-$base = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0'
+$base = 'D:\projects\betterGI'
 $out = 'C:\Users\djf20\group_progress.txt'
 $f = Get-ChildItem "$base\log\better-genshin-impact$(Get-Date -Format yyyyMMdd).log" -ErrorAction SilentlyContinue
 $fs = New-Object System.IO.FileStream($f.FullName, 'Open', 'Read', 'ReadWrite')

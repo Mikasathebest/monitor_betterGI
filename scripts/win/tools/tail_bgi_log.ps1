@@ -2,7 +2,7 @@
 # 用法: powershell -File tail_bgi_log.ps1 [-Tail 80] [-Filter 'NAV_RESULT|ERROR_LOG|RESTART']
 param([int]$Tail = 80, [string]$Filter = 'NAV_RESULT|ERROR_LOG|RESTART|三角|伺服|采样|上杉|结局|对话开始|导航|卡住|脱困|邀约|执行结束|开始执行|JS')
 $ErrorActionPreference = 'Continue'
-$logDir = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0\log'
+$logDir = 'D:\projects\betterGI\log'
 $out = 'C:\Users\djf20\hangout_tail.txt'
 
 $f = Get-ChildItem $logDir -Filter *.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1

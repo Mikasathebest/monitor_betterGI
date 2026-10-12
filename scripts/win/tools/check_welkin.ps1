@@ -1,6 +1,6 @@
 # 查月卡/一条龙 (全文件搜, 先看日志时间范围)
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$base = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0'
+$base = 'D:\projects\betterGI'
 $f = Get-ChildItem "$base\log\better-genshin-impact*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 $fs = [System.IO.FileStream]::new($f.FullName, 'Open', 'Read', 'ReadWrite')
 $sr = [System.IO.StreamReader]::new($fs, [Text.Encoding]::UTF8)

@@ -1,6 +1,6 @@
 # 列出一条龙默认配置的任务清单 (看有没有挖矿/地图追踪)
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$p = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0\User\OneDragon\默认配置.json'
+$p = 'D:\projects\betterGI\User\OneDragon\默认配置.json'
 $j = Get-Content $p -Raw -Encoding UTF8 | ConvertFrom-Json
 $out = 'C:\Users\djf20\od_tasks.txt'
 $sb = New-Object System.Text.StringBuilder

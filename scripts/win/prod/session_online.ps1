@@ -150,17 +150,44 @@ if ($probe.Trim().Length -lt 200) {
 
 # 9. 等一条龙流程完成 (标记: 一条龙.*任务结束; 每 2min 轮询, 上限 100min)
 $done = ($probe -match '一条龙.{0,6}任务结束'); $stuck = $false  # 修复09-18: probe 可能已吞完成标记(一条龙跑得快时)
+$odText = $probe   # 累积本轮一条龙日志, 完成后判断是否失败 (10-12: 补跑逻辑用)
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $silentMin = 0
 while (-not $done -and $sw.Elapsed.TotalMinutes -lt 100) {
   Start-Sleep -Seconds 120
   Skip-IfRelogin '一条龙等待'
   $new = Read-NewLog
+  $odText += $new
   if ($new -match '一条龙.{0,6}任务结束') { $done = $true; break }
   if ($new.Trim().Length -gt 0) { $silentMin = 0 } else { $silentMin += 2 }
   if ($silentMin -ge 25) { $stuck = $true; break }   # 流程卡死: 交给看门狗恢复
 }
 if ($done) { Log "一条龙流程已完成 (耗时 $([int]$sw.Elapsed.TotalMinutes) 分钟), 启动采矿组" }
+
+# 9.5 一条龙失败补跑 (10-12 排查: 09-25~10-12 有 6 天一次"今日奖励已领取"都没有;
+#     失败场次的共同特征 = F9 时游戏不在主界面 (队伍识别全"未知角色" / 打开大地图失败)
+#     → 合成树脂/委托奖励/尘歌壶 全部空跑。BGI 重跑一条龙会跳过已完成项, 只补失败的)
+$odFail = '打开大地图失败|合成树脂执行异常|未能返回主界面|结果："未领取"|未知角色,未知角色'
+if ($done -and $odText -match $odFail) {
+  Log "一条龙有失败项 (匹配: $($Matches[0])), 关弹窗 + 截图存证 + 补跑 F9 一次"
+  & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\esc_s1.ps1 | Out-Null
+  $shot = 'C:\Users\djf20\screen.png'
+  if (Test-Path $shot) { Copy-Item $shot ("C:\Users\djf20\od_fail_" + (Get-Date -Format 'yyyyMMdd_HHmm') + '.png') -Force }
+  Start-Sleep -Seconds 15
+  Read-NewLog | Out-Null
+  & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\send_f9.ps1
+  $retryText = ''; $retryDone = $false
+  $sw2 = [Diagnostics.Stopwatch]::StartNew()
+  while ($sw2.Elapsed.TotalMinutes -lt 30) {
+    Start-Sleep -Seconds 60
+    $new = Read-NewLog
+    $retryText += $new
+    if ($new -match '一条龙.{0,6}任务结束') { $retryDone = $true; break }
+  }
+  if (-not $retryDone) { Log "警告: 补跑一条龙 30 分钟未结束, 继续启动采矿组" }
+  elseif ($retryText -match $odFail) { Log "警告: 补跑后仍有失败项 (匹配: $($Matches[0])), 需人工检查 (截图 od_fail_*.png)" }
+  else { Log "补跑一条龙成功 (耗时 $([int]$sw2.Elapsed.TotalMinutes) 分钟)" }
+}
 elseif ($stuck) {
   Log "警告: 等待期间日志静默 ≥25 分钟, 流程疑似卡死 → 置 RUNNING 让看门狗恢复, 本场不启动采矿"
   Set-Content $stateFile ("PHASE=RUNNING`nACTIVE_UNTIL=" + $off.ToString('yyyy-MM-dd HH:mm:ss')) -Encoding UTF8

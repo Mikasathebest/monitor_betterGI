@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Continue'
 $log = 'C:\Users\djf20\watchdog_log.txt'
 $stateFile = 'C:\Users\djf20\session_state.txt'
 $cooldownFile = 'C:\Users\djf20\watchdog_recover.txt'
-$base = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0'
+$base = 'D:\projects\betterGI'
 function Log($msg) { "$(Get-Date -Format 'MM-dd HH:mm') $msg" | Out-File $log -Append -Encoding utf8 }
 
 $ys = [bool](Get-Process YuanShen -ErrorAction SilentlyContinue)

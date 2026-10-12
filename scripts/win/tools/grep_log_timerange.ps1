@@ -1,7 +1,7 @@
 # 抓指定时间段+关键字的日志行 → UTF8 文件
 param([string]$Since = '20:26', [int]$MaxLines = 120)
 $ErrorActionPreference = 'Continue'
-$logDir = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0\log'
+$logDir = 'D:\projects\betterGI\log'
 $out = 'C:\Users\djf20\hangout_tail.txt'
 $f = Get-ChildItem $logDir -Filter *.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 $fs = New-Object System.IO.FileStream($f.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)

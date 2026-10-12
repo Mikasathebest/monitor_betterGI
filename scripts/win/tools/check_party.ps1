@@ -1,6 +1,6 @@
 # 列出所有 ScriptGroup 的 partyName + 游戏内当前队伍相关配置
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$base = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0\User'
+$base = 'D:\projects\betterGI\User'
 $out = 'C:\Users\djf20\party_list.txt'
 $sb = New-Object System.Text.StringBuilder
 foreach ($f in Get-ChildItem "$base\ScriptGroup" -Filter *.json) {

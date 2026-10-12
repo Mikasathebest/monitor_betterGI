@@ -6,7 +6,7 @@ param(
   [string]$Out = ''
 )
 $ErrorActionPreference = 'Stop'
-$logDir = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0\log'
+$logDir = 'D:\projects\betterGI\log'
 if (-not $Out) { $Out = "C:\Users\djf20\_agent_log_events_$Date.txt" }
 $src = Join-Path $logDir "better-genshin-impact$Date.log"
 if (-not (Test-Path $src)) { Write-Output "EXPORT_NOLOG $src"; exit 0 }

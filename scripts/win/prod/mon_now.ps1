@@ -1,6 +1,6 @@
 # 大组监控 v2: 合并"时间戳头行+消息行"为条目后再统计
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$logDir = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0\log'
+$logDir = 'D:\projects\betterGI\log'
 $out = 'C:\Users\djf20\mon_now.txt'
 $f = Get-ChildItem $logDir -Filter *.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 $fs = New-Object System.IO.FileStream($f.FullName, 'Open', 'Read', 'ReadWrite')

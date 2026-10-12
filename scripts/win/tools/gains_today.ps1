@@ -1,6 +1,6 @@
 # 今日 (04:30 起) 收益与异常统计 → UTF8 文件供 scp 回 Mac
 $ErrorActionPreference = 'Continue'
-$base = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0'
+$base = 'D:\projects\betterGI'
 $out = 'C:\Users\djf20\gains_today.txt'
 $f = Get-ChildItem "$base\log\better-genshin-impact*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 $fs = New-Object System.IO.FileStream($f.FullName, 'Open', 'Read', 'ReadWrite')

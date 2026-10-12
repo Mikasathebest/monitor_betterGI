@@ -1,7 +1,7 @@
 # 崩溃前上下文: 昨天日志 00:24 前后 + GPU 信息 + 游戏内画质进程参数
 $ErrorActionPreference = 'Continue'
 $out = 'C:\Users\djf20\crash_context.txt'
-$base = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0'
+$base = 'D:\projects\betterGI'
 $sb = New-Object System.Text.StringBuilder
 
 # 1. 昨天日志 00:20-00:26 的内容 (游戏死前最后在做什么)

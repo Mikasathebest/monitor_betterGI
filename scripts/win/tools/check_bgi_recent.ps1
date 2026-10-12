@@ -1,7 +1,7 @@
 Start-Sleep -Seconds 10
 Write-Output 'PROCESSES:'
 Get-Process BetterGI,YuanShen -ErrorAction SilentlyContinue | ForEach-Object { Write-Output ($_.ProcessName + ' PID=' + $_.Id + ' START=' + $_.StartTime.ToString('yyyy-MM-dd HH:mm:ss')) }
-$dir = 'D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0\log'
+$dir = 'D:\projects\betterGI\log'
 Write-Output 'LOGFILES:'
 $files = Get-ChildItem -LiteralPath $dir -File | Sort-Object LastWriteTime -Descending | Select-Object -First 3
 foreach ($f in $files) {

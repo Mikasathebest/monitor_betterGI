@@ -9,7 +9,7 @@
 - Mac（Agent 大脑）经 ssh 控制 Windows 游戏机，主机名见 `.env` 的 `BGI_SSH_HOST`
 - Windows 脚本与审计文件目录：`C:\Users\djf20\`
   - 审计：`cycle_log.txt`（会话时间线）/ `watchdog_log.txt`（30min 一行）/ `session_state.txt`（`PHASE=STARTING/RUNNING/OFFLINE` + `ACTIVE_UNTIL`）
-- BGI 目录：`D:\Projects\better-genshin-impact\BetterGenshinImpact\bin\Release\net8.0-windows10.0.22621.0`，日志在其 `log\` 子目录
+- BGI 目录：`D:\projects\betterGI`，日志在其 `log\` 子目录
 - 游戏：`E:\YS\miHoYo Launcher\games\Genshin Impact Game\YuanShen.exe`，1920x1080 窗口化
 - 场次作息、管线内容、看门狗：以 [总入口.md](总入口.md)「当前生产状态」为准
 
