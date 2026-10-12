@@ -1,6 +1,6 @@
 # monitor_betterGI
 
-从 Mac 远程托管 Windows 上的 [BetterGI](https://github.com/babalae/better-genshin-impact) + 原神：每天定时上线清日常/体力、跑材料路线，Mac 端 LLM Agent 巡检和自动恢复。
+从 Mac 远程托管 Windows 上的 [BetterGI](https://github.com/babalae/better-genshin-impact) + 原神：Windows 计划任务每天定时上线（早 04:15 / 午 13:00，周末无午场 / 晚 23:00）清日常/体力、跑材料路线，看门狗自动恢复、跑完提前下线；Mac 端负责部署脚本、解析日志，LLM Agent 按需手动巡检。
 
 **文档入口：[docs/betterGI/总入口.md](docs/betterGI/总入口.md)**（架构、当前生产状态、铁律、代码目录）。动手前先读 [错题本](docs/betterGI/错题本.md)。
 
@@ -13,9 +13,7 @@ cp .env.example .env   # 填 INFERENCE_API_KEY / BGI_SSH_HOST, 可选 FEISHU_WEB
 # 手动跑一次 Agent 巡检
 .venv/bin/python scripts/agent/bgi_agent.py "$(cat scripts/agent/scheduled_mission.txt)"
 
-# 定时上线全由 Windows 计划任务负责 (BGI_Session); Mac 端不再定时巡检 (10-12 起), Agent 仅按需手动跑
-
-# 部署 / 检查 Windows 脚本是否与仓库一致
+# 部署 / 检查 Windows 脚本是否与仓库一致 (读 .env 的 BGI_SSH_HOST)
 python3 scripts/win_sync.py push session_online.ps1
 python3 scripts/win_sync.py diff
 
