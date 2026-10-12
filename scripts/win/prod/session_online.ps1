@@ -203,7 +203,7 @@ elseif ($stuck) {
   Set-Content $stateFile ("PHASE=RUNNING`nACTIVE_UNTIL=" + $off.ToString('yyyy-MM-dd HH:mm:ss')) -Encoding UTF8
   exit 1
 }
-else { Log "警告: 等完成标记超时 (100 分钟), 仍尝试启动采矿组" }
+elseif (-not $done) { Log "警告: 等完成标记超时 (100 分钟), 仍尝试启动采矿组" }
 
 # 10. 启动收集大组 (书签续跑) 或体力监控组
 #     - 今日已全部跑完 (collection_finished.txt=今日) → 只跑体力监控
