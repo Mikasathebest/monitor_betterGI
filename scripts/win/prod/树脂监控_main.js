@@ -12,7 +12,9 @@
     await genshin.returnMainUi();
     await sleep(1200);
 
-    // 月卡(空月祝福): 弹窗在则点击领取, 不在则跳过 (幂等; 本脚本每session跑多次=每日必领)
+    // 月卡(空月祝福): 弹窗在则点击领取, 不在则跳过 (幂等)
+    // 注意(10-12 读源码): BGI 该任务只在服务器时间 03:55~04:05 检测, 04:15 场实际不起作用;
+    // 早场月卡靠进门阶段 GameLoading 触发器 + door_clicker2 (见 一条龙.md §6)
     // 背景: 2026-09-15 一条龙 returnMainUi 的 Esc 没能领到月卡, 用户手动补领
     try {
         await genshin.blessingOfTheWelkinMoon();

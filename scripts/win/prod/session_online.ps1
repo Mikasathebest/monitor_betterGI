@@ -109,15 +109,16 @@ Start-Sleep -Seconds 75
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_capture.ps1
 Start-Sleep -Seconds 5
 
-# 5. 起游戏, 安静等 120s
+# 5. 起游戏, 安静等 30s (10-12 用户要求缩短: 本机加载快; 截图器已开时 BGI 联动起游戏,
+#    其 GameLoading 触发器在截图器启动后 5 分钟内自动点"点击进入"+空月祝福+原石, 点击器只是兜底)
 $script:loginBase = Count-Logins   # 顶号检测基线 (游戏未起, 此刻计数为历史值)
 Log "顶号检测基线: SDK登录历史 $script:loginBase 次"
 if (-not (Get-Process YuanShen -ErrorAction SilentlyContinue)) {
   Start-Process $gameExe
   Log "游戏已直起"
 }
-Log "安静等待 120s (不点不碰)..."
-Start-Sleep -Seconds 120
+Log "安静等待 30s (不点不碰)..."
+Start-Sleep -Seconds 30
 
 # 6. 隐藏点击器进门 (6s/次 × 180s, wscript 隐藏不抢焦点)
 & wscript.exe C:\Users\djf20\run_hidden.vbs door_clicker2.ps1
@@ -169,7 +170,12 @@ if ($done) { Log "一条龙流程已完成 (耗时 $([int]$sw.Elapsed.TotalMinut
 #     → 合成树脂/委托奖励/尘歌壶 全部空跑。BGI 重跑一条龙会跳过已完成项, 只补失败的)
 $odFail = '打开大地图失败|合成树脂执行异常|未能返回主界面|结果："未领取"|未知角色,未知角色'
 if ($done -and $odText -match $odFail) {
-  Log "一条龙有失败项 (匹配: $($Matches[0])), 关弹窗 + 截图存证 + 补跑 F9 一次"
+  Log "一条龙有失败项 (匹配: $($Matches[0])), 点 3 下中心 + 关弹窗 + 截图存证 + 补跑 F9 一次"
+  # 早场必有月卡: 空月祝福/原石界面只认点击不认 ESC (BGI 自带的月卡任务只在 03:55~04:05 生效)
+  for ($k = 0; $k -lt 3; $k++) {
+    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\enter_door.ps1 | Out-Null
+    Start-Sleep -Seconds 4
+  }
   & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\esc_s1.ps1 | Out-Null
   $shot = 'C:\Users\djf20\screen.png'
   if (Test-Path $shot) { Copy-Item $shot ("C:\Users\djf20\od_fail_" + (Get-Date -Format 'yyyyMMdd_HHmm') + '.png') -Force }
