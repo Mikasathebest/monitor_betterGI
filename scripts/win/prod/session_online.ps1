@@ -63,10 +63,14 @@ function Skip-IfRelogin($stage) {
 Log "=== 定时上线会话开始 (v3) ==="
 
 # 0.00 场次时长 (2026-10-12 用户定: 恢复午场; 早 5h / 午 4h / 晚 3h, 每天最长 12h; 跑完由看门狗提前下线)
-#   按触发时刻归属: 04-11 点=早场, 12-17 点=午场, 其余=晚场 (晚场 23:00+3h=02:00, 不压早场)
+#   按触发时刻归属: 04-11 点=早场, 12-17 点=午场 (周末跳过), 其余=晚场 (晚场 23:00+3h=02:00, 不压早场)
 $h = (Get-Date).Hour
 if ($h -ge 4 -and $h -lt 12) { $sessName = '早场'; $sessHours = 5 }
-elseif ($h -ge 12 -and $h -lt 18) { $sessName = '午场'; $sessHours = 4 }
+elseif ($h -ge 12 -and $h -lt 18) {
+  # 周末不跑午场 (用户周末中午自己上线; 10-12 定)
+  if ((Get-Date).DayOfWeek -in 'Saturday', 'Sunday') { Log "周末无午场 (当前 $h 点), 本次触发跳过"; exit 0 }
+  $sessName = '午场'; $sessHours = 4
+}
 else { $sessName = '晚场'; $sessHours = 3 }
 Log "场次: $sessName, 窗口 ${sessHours}h"
 

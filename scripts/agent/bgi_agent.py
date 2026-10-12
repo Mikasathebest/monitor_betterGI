@@ -346,7 +346,7 @@ def run_agent(mission: str) -> tuple[str, str]:
 
 
 def acquire_lock():
-    """单实例锁: daemon 定时触发与手动运行不能同时操作 Windows。返回的文件对象需保持存活"""
+    """单实例锁: 多个 Agent 实例不能同时操作 Windows。返回的文件对象需保持存活"""
     LOCK_FILE.parent.mkdir(exist_ok=True)
     f = LOCK_FILE.open("a+")
     try:

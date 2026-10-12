@@ -13,8 +13,7 @@ cp .env.example .env   # 填 INFERENCE_API_KEY / BGI_SSH_HOST, 可选 FEISHU_WEB
 # 手动跑一次 Agent 巡检
 .venv/bin/python scripts/agent/bgi_agent.py "$(cat scripts/agent/scheduled_mission.txt)"
 
-# 定时巡检 (每场开始后 2 分钟)
-nohup scripts/agent/daemon.sh >> captures/agent_daemon.log 2>&1 &
+# 定时上线全由 Windows 计划任务负责 (BGI_Session); Mac 端不再定时巡检 (10-12 起), Agent 仅按需手动跑
 
 # 部署 / 检查 Windows 脚本是否与仓库一致
 python3 scripts/win_sync.py push session_online.ps1
