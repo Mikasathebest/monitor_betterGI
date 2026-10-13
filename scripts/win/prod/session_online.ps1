@@ -279,6 +279,19 @@ if ($finishedToday) {
   } else {
     Log "无续跑组 (书签 idx $bk), 将启动主组: 全自动循环"
   }
+  # BGI 已在跑时其内存书签是启动时加载的旧值, config.json 新写的书签不生效
+  # (10-13 午场教训: 早场未正常下线 → BGI 未重启 → 午场无视书签从组头重跑 85 条)
+  # → 启动收集组前若 BGI 在跑, 重启 BGI 让它重新加载 config.json
+  $bgiProc = Get-Process BetterGI -ErrorAction SilentlyContinue
+  if ($bgiProc) {
+    Log "BGI 已在运行 (PID $($bgiProc.Id -join ',')), 重启以加载最新书签"
+    Stop-Process -Name BetterGI -Force -ErrorAction SilentlyContinue
+    Stop-Process -Name YuanShen -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 6
+    schtasks /run /tn BetterGI_Run | Out-Null
+    Log "BGI 经 BetterGI_Run 重启, 等 75s"
+    Start-Sleep -Seconds 75
+  }
   for ($i = 1; $i -le 2; $i++) {
     & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_group_named.ps1 -NameMatch $groupMatch
     Start-Sleep -Seconds 30
