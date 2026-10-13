@@ -198,6 +198,11 @@ def parse_day(date8):
     day_total = dp[2] if dp else None   # 当天实际组规模 (如 10-13 跑的是 175 条版组)
     day_items = Counter(n for _, n in pick_pts)
     total = sum(items['pick_count'] for items in sessions)
+    # 错题本: 当天重复执行的路线 (同一组内路线跑了多次 = 书签失效白跑)
+    all_routes = [n for _, n in route_pts]
+    route_exec = Counter(all_routes)
+    duplicates = {n: c for n, c in route_exec.items() if c > 1}
+    wasted_routes = sum(c - 1 for c in duplicates.values())  # 多跑的次数
     # 组总数: 优先当天的真实规模, 否则当前组
     grp_total = day_total or current_group_total()
     result = {
@@ -220,6 +225,8 @@ def parse_day(date8):
                       'progress_est': s['estimated'],
                       'items': dict(s['items'].most_common())} for s in sessions],
         'items': dict(day_items.most_common()),
+        'wasted_routes': wasted_routes,
+        'duplicates': dict(sorted(duplicates.items(), key=lambda x: -x[1])),
     }
     with _cache_lock:
         _cache[date8] = result
@@ -283,6 +290,7 @@ def overview(days=30):
         if info:
             out.append({'date': info['date'], 'date_fmt': info['date_fmt'], 'weekday': info['weekday'],
                         'routes': info['route_total'], 'picks': info['pick_count'],
+                        'wasted': info['wasted_routes'],
                         'sessions': [{'name': s['name'], 'duration': s['duration'], 'routes': s['routes'],
                                       'idx': s['progress_idx'], 'total': s['progress_total'],
                                       'progress_est': s['progress_est']} for s in info['sessions']],
@@ -317,6 +325,7 @@ PAGE = r'''<!DOCTYPE html>
   .day.empty { opacity:.35; cursor:default; }
   .day.empty:hover { border-color:#30363d; transform:none; }
   .day.today { border-color:#1f6feb; box-shadow:0 0 0 1px #1f6feb; }
+  .day.warn { border-color:#6e2a2a; background:#1c1414; }
   .day .d-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
   .day .d-num { font-size:16px; font-weight:700; }
   .day .d-wk { font-size:11px; color:#8b949e; }
@@ -408,9 +417,9 @@ function renderOverview(data) {
       return `<span class="chip">${x.name[0]}${x.duration}${prog}</span>`;
     }).join('');
     const progAll = d.sessions.filter(x=>x.idx!=null).map(x=>`${x.idx}/${x.total}`).pop();
-    html += `<div class="day ${d.date_fmt===todayFmt?'today':''}" onclick="location.hash='#/${d.date}'">
+    html += `<div class="day ${d.date_fmt===todayFmt?'today':''} ${d.wasted>0?'warn':''}" onclick="location.hash='#/${d.date}'">
       <div class="d-head"><span class="d-num">${d.date_fmt.slice(5)}</span><span class="d-wk">${d.weekday}</span></div>
-      <div class="d-stat">路线 <b>${d.routes}</b> · 拾取 <b class="pk">${d.picks}</b></div>
+      <div class="d-stat">路线 <b>${d.routes}</b> · 拾取 <b class="pk">${d.picks}</b>${d.wasted>0?` · <b style="color:#f85149">重复${d.wasted}</b>`:''}</div>
       ${odBadge(d.od)}
       <div class="chips">${chips || '<span class="chip">无场次</span>'}</div>
       ${progAll ? `<div class="prog">进度 ${progAll}</div>` : ''}
@@ -457,8 +466,15 @@ function renderDay(d) {
     <h2>日常任务</h2>
     <div class="od-row">${odItems.map(([n,ok])=>`<div class="od ${ok?'ok':'no'}">${n}</div>`).join('')}${resin}</div>
     <h2>场次 (${d.sessions.length})</h2>
-    ${d.sessions.map(sessionCard).join('') || '<div class="note">无场次记录</div>'}
-    <h2>物品拾取明细 (按场次)</h2>`;
+    ${d.sessions.map(sessionCard).join('') || '<div class="note">无场次记录</div>'}`;
+  if (d.wasted && d.wasted > 0) {
+    html += `<h2>错题本 · 当天重复执行的路线 (共 ${d.wasted} 次白跑)</h2>
+      <table><tr><th>路线</th><th class="num">执行次数</th><th class="num">多跑</th></tr>${
+      Object.entries(d.duplicates).map(([n,c]) =>
+        `<tr><td>${esc(n)}</td><td class="num" style="color:#ff6b6b">${c}</td><td class="num" style="color:#f85149">+${c-1}</td></tr>`).join('')}
+      </table>`;
+  }
+  html += `<h2>物品拾取明细 (按场次)</h2>`;
   if (d.sessions.length) {
     html += `<div class="sess-cols">` + d.sessions.map(s => `
       <div class="ibox"><h3>${esc(s.name)} <small>${s.start}–${s.end} · ${s.pick_kinds}种 ${s.pick_count}个</small></h3>
