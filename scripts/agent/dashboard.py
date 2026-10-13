@@ -261,7 +261,7 @@ DASHBOARD_HTML = r'''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <title>BetterGI 收集 Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="/echarts.min.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
