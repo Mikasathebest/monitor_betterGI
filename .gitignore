@@ -31,3 +31,6 @@ captures/
 
 # 本地凭据
 .env
+
+# dashboard v2 弃用 echarts (纯 CSS 实现)
+scripts/agent/echarts.min.js
