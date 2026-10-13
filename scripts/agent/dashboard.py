@@ -52,8 +52,9 @@ def _sess_name(hour):
 
 # ---------- cycle_log 场次事件 ----------
 def load_cycle_events():
-    """返回 {date8: {starts:[(sec,name)], offline:sec, progress:(sec,idx,total)}}"""
+    """返回 (按日事件, 全部进度线[(datetime, idx, total)])"""
     events = {}
+    prog_all = []
     try:
         with open(CYCLE_LOG, encoding='utf-8', errors='ignore') as f:
             for line in f:
@@ -70,15 +71,16 @@ def load_cycle_events():
                             ev['offline'] = sec
                         else:
                             ev['progress'] = (sec, int(m.group(2)), int(m.group(3)))
+                            prog_all.append((dt, int(m.group(2)), int(m.group(3))))
                         break
     except OSError:
         pass
-    return events
+    return events, prog_all
 
 # ---------- 会话构建 ----------
-def build_sessions(date8, route_pts, pick_pts):
+def build_sessions(date8, route_pts, pick_pts, prog_all):
     """用 cycle_log 场次事件切分会话; 无事件时按日志活动间隙推断"""
-    ev = load_cycle_events().get(date8)
+    ev = load_cycle_events()[0].get(date8)
     sessions = []
     if ev and ev['starts']:
         raw = sorted(set(ev['starts']))
@@ -115,7 +117,8 @@ def build_sessions(date8, route_pts, pick_pts):
             for s, e in blocks:
                 sessions.append({'name': _sess_name(s // 3600), 'start': s, 'end': e, 'progress': None})
     # 归属路线/物品
-    route_idx = group_route_index()   # 路线名 → 组内 index
+    ridx = group_route_index()   # 路线名 → 当前组内 index (仅用于识别"从组头跑")
+    start_dt0 = datetime.strptime(date8, '%Y%m%d')
     for ses in sessions:
         s, e = ses['start'], ses['end']
         ses['routes'] = [n for t, n in route_pts if s <= _t2s(t) <= e]
@@ -124,12 +127,25 @@ def build_sessions(date8, route_pts, pick_pts):
         ses['pick_count'] = sum(items.values())
         ses['items'] = items
         ses['duration'] = _s2hms(e - s)
-        # 无 cycle_log 进度时: 用本场最后一条路线在组内的 index 推导 (如最后是 idx174 → 175/175)
-        if ses['progress'] is None and route_idx:
-            for n in reversed(ses['routes']):
-                if n in route_idx:
-                    ses['progress'] = (route_idx[n] + 1, len(route_idx))
+        ses['estimated'] = False
+        # 进度: a) cycle_log 直接进度 (准确)  b) 从组头推算  c) 前场书签+执行数推算
+        if ses['progress'] is None and ses['routes']:
+            executed = len(ses['routes'])
+            sd = start_dt0.replace(hour=s // 3600, minute=s % 3600 // 60, second=s % 60)
+            prior = None
+            for dt, pidx, ptot in prog_all:
+                if dt < sd:
+                    prior = (pidx, ptot)
+                else:
                     break
+            from_head = ridx.get(ses['routes'][0], 999) <= 2   # 组头允许有树脂监控等非路线任务
+            if from_head:
+                # 新的一天从头跑 (每日去重设计): 停在 executed-1, 下一条 = executed
+                ses['progress'] = (min(executed, 9999), None)
+                ses['estimated'] = True
+            elif prior:
+                ses['progress'] = ((prior[0] + executed) % prior[1], prior[1])
+                ses['estimated'] = True
     return sessions
 
 _route_idx_cache = None
@@ -176,16 +192,14 @@ def parse_day(date8):
             if TEAPOT.search(line): teapot = True
             m = RESIN_RE.search(line)
             if m: resin = int(m.group(1))
-    sessions = build_sessions(date8, route_pts, pick_pts)
+    sessions = build_sessions(date8, route_pts, pick_pts, load_cycle_events()[1])
+    evs = load_cycle_events()[0]
+    dp = (evs.get(date8) or {}).get('progress')
+    day_total = dp[2] if dp else None   # 当天实际组规模 (如 10-13 跑的是 175 条版组)
     day_items = Counter(n for _, n in pick_pts)
     total = sum(items['pick_count'] for items in sessions)
-    # 组总数 (取任意书签进度里的 total, 否则读当前组)
-    grp_total = None
-    for ses in sessions:
-        if ses['progress']:
-            grp_total = ses['progress'][1]; break
-    if grp_total is None:
-        grp_total = current_group_total()
+    # 组总数: 优先当天的真实规模, 否则当前组
+    grp_total = day_total or current_group_total()
     result = {
         'date': date8,
         'date_fmt': f"{date8[:4]}-{date8[4:6]}-{date8[6:]}",
@@ -202,7 +216,8 @@ def parse_day(date8):
                       'end': f"{s['end']//3600:02d}:{s['end']%3600//60:02d}", 'duration': s['duration'],
                       'routes': len(s['routes']), 'pick_kinds': s['pick_kinds'], 'pick_count': s['pick_count'],
                       'progress_idx': s['progress'][0] if s['progress'] else None,
-                      'progress_total': s['progress'][1] if s['progress'] else grp_total,
+                      'progress_total': (s['progress'][1] or day_total or grp_total) if s['progress'] else None,
+                      'progress_est': s['estimated'],
                       'items': dict(s['items'].most_common())} for s in sessions],
         'items': dict(day_items.most_common()),
     }
@@ -269,7 +284,8 @@ def overview(days=30):
             out.append({'date': info['date'], 'date_fmt': info['date_fmt'], 'weekday': info['weekday'],
                         'routes': info['route_total'], 'picks': info['pick_count'],
                         'sessions': [{'name': s['name'], 'duration': s['duration'], 'routes': s['routes'],
-                                      'idx': s['progress_idx'], 'total': s['progress_total']} for s in info['sessions']],
+                                      'idx': s['progress_idx'], 'total': s['progress_total'],
+                                      'progress_est': s['progress_est']} for s in info['sessions']],
                         'od': info['od']})
     return {'days': out, 'status': current_status()}
 
@@ -388,7 +404,7 @@ function renderOverview(data) {
   const todayFmt = new Date().toISOString().slice(0,10);
   days.forEach(d => {
     const chips = d.sessions.map(x => {
-      const prog = (x.idx != null && x.total) ? ` <b>${x.idx}/${x.total}</b>` : '';
+      const prog = (x.idx != null && x.total) ? ` <b>${x.progress_est?'~':''}${x.idx}/${x.total}</b>` : '';
       return `<span class="chip">${x.name[0]}${x.duration}${prog}</span>`;
     }).join('');
     const progAll = d.sessions.filter(x=>x.idx!=null).map(x=>`${x.idx}/${x.total}`).pop();
@@ -406,11 +422,12 @@ function renderOverview(data) {
 
 function sessionCard(s) {
   const idx = s.progress_idx, total = s.progress_total;
+  const mark = s.progress_est ? '~' : '';
   let bar = '';
   if (idx != null && total) {
     const pct = Math.min(100, Math.round(idx/total*100));
     bar = `<div class="pbar ${pct>=100?'':'y'}"><div style="width:${pct}%"></div></div>
-           <div class="ptxt">收集进度 <b>${idx} / ${total}</b> (${pct}%)</div>`;
+           <div class="ptxt">收集进度 <b>${mark}${idx} / ${total}</b> (${pct}%${s.progress_est?', 估':''})</div>`;
   }
   return `<div class="sess">
     <div class="s-head">
