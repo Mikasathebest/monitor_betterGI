@@ -64,11 +64,11 @@ def load_cycle_events():
                         dt = datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S')
                         d8 = dt.strftime('%Y%m%d')
                         sec = _t2s(dt.strftime('%H:%M:%S'))
-                        ev = events.setdefault(d8, {'starts': [], 'offline': None, 'progress': None})
+                        ev = events.setdefault(d8, {'starts': [], 'offlines': [], 'progress': None})
                         if rex is CL_SESS_RE:
                             ev['starts'].append((sec, m.group(2)))
                         elif rex is CL_OFF_RE:
-                            ev['offline'] = sec
+                            ev['offlines'].append(sec)   # 可有多条(正常下线/杀卡死实例副作用), 场次各自取自己的
                         else:
                             ev['progress'] = (sec, int(m.group(2)), int(m.group(3)))
                             prog_all.append((dt, int(m.group(2)), int(m.group(3))))
@@ -87,23 +87,28 @@ def build_sessions(date8, route_pts, pick_pts, prog_all):
         # 合并 60 秒内的重复启动 (重试); 手动干预(杀卡死实例后重触发)产生的同场次 start 间隔 <40 分钟也合并
         starts = []
         for sec, name in raw:
-            if starts and sec - starts[-1][0] < (60 if starts[-1][1] == name else 40 * 60):
+            if starts and sec - starts[-1][0] < (40 * 60 if starts[-1][1] == name else 60):
                 continue
             starts.append((sec, name))
         for i, (s, name) in enumerate(starts):
             nxt = starts[i+1][0] if i+1 < len(starts) else None
-            if nxt is not None:
-                e = nxt                       # 下一场开始 = 本场结束 (无下线记录时, 如午场覆盖下线任务)
-            elif ev['offline'] and ev['offline'] > s:
-                e = ev['offline']
+            # 本场自己的下线: start 之后、下一场开始之前的最近一条 (17:00 正常下线 / 23:27 杀进程副作用互不干扰)
+            own_off = next((o for o in sorted(ev['offlines']) if s < o and (nxt is None or o <= nxt)), None)
+            if own_off is not None:
+                e = own_off
+            elif nxt is not None:
+                e = nxt                        # 无下线记录时: 下一场开始 = 本场结束 (如午场覆盖早场下线)
             else:
                 e = max([_t2s(t) for t, _ in route_pts + pick_pts] + [s])
             if e <= s:
                 e = min(s + 4 * 3600, 86399)
-            prog = None
-            if ev['progress'] and s - 5 <= ev['progress'][0] <= e + 15:
-                prog = ev['progress'][1:]
-            sessions.append({'name': name, 'start': s, 'end': e, 'progress': prog})
+            sessions.append({'name': name, 'start': s, 'end': e, 'progress': None})
+        # 进度线唯一归属: 倒序找唯一包含它的场次 (17:00:06 的 90/175 属午场, 不共享给早场)
+        if ev['progress']:
+            for ses in reversed(sessions):
+                if ses['start'] - 5 <= ev['progress'][0] <= ses['end'] + 15:
+                    ses['progress'] = ev['progress'][1:]
+                    break
     else:
         # 日志活动间隙推断 (>25 分钟无日志 = 分场)
         times = sorted(set(_t2s(t) for t, _ in route_pts + pick_pts))
