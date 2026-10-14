@@ -84,10 +84,10 @@ def build_sessions(date8, route_pts, pick_pts, prog_all):
     sessions = []
     if ev and ev['starts']:
         raw = sorted(set(ev['starts']))
-        # 合并 60 秒内的重复启动 (重试)
+        # 合并 60 秒内的重复启动 (重试); 手动干预(杀卡死实例后重触发)产生的同场次 start 间隔 <40 分钟也合并
         starts = []
         for sec, name in raw:
-            if starts and sec - starts[-1][0] < 60:
+            if starts and sec - starts[-1][0] < (60 if starts[-1][1] == name else 40 * 60):
                 continue
             starts.append((sec, name))
         for i, (s, name) in enumerate(starts):
@@ -161,12 +161,15 @@ def group_route_index():
 
 # ---------- 日志解析 ----------
 def parse_day(date8):
-    with _cache_lock:
-        if date8 in _cache:
-            return _cache[date8]
     path = os.path.join(BGI_LOG_DIR, f'better-genshin-impact{date8}.log')
     if not os.path.exists(path):
         return None
+    # 缓存绑定日志文件 mtime: 日志还在写入(当天场次)时自动重新解析, 否则会缓存住早场刚启动时的空结果
+    mtime = os.path.getmtime(path)
+    with _cache_lock:
+        hit = _cache.get(date8)
+        if hit and hit[0] == mtime:
+            return hit[1]
     route_pts, pick_pts = [], []
     battle_ok = battle_fail = 0
     monthly = daily = expedition = teapot = False
@@ -229,7 +232,7 @@ def parse_day(date8):
         'duplicates': dict(sorted(duplicates.items(), key=lambda x: -x[1])),
     }
     with _cache_lock:
-        _cache[date8] = result
+        _cache[date8] = (mtime, result)
     return result
 
 def current_group_total():
