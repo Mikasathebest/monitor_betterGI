@@ -42,10 +42,19 @@ if (-not $Complete) {
       $sr = [System.IO.StreamReader]::new($fs, [Text.Encoding]::UTF8)
       $all = $sr.ReadToEnd(); $sr.Close(); $fs.Close()
       foreach ($ln in (($all -split "`r?`n") | Select-Object -Last 15)) {
-        if ($ln -match '^\[(\d\d:\d\d:\d\d).+配置组.*执行结束') {
+        if ($ln -match '^\[(\d\d:\d\d:\d\d).+配置组\s+"?([^"\r\n]+?)"?\s+执行结束') {
           $t = [DateTime]::ParseExact($Matches[1], 'HH:mm:ss', $null)
           $age = (Get-Date) - (Get-Date -Hour $t.Hour -Minute $t.Minute -Second $t.Second)
-          if ($age.TotalMinutes -ge 0 -and $age.TotalMinutes -lt 3) { $Complete = $true; Log "检测到组刚完成 ($($Matches[1])), 按 Complete 处理"; break }
+          if ($age.TotalMinutes -ge 0 -and $age.TotalMinutes -lt 3) {
+            # 10-15 分组后: 只有日收尾组 (B组/续跑组/主组) 完成才算全天跑完;
+            # 收集A组完成仅代表早场收尾, 体力/采矿组完成更不代表 → 均保存书签续跑 (午场接 B 组)
+            if ($Matches[2] -match '^(收集B组|续跑收集组|全自动循环)$') {
+              $Complete = $true; Log "检测到 $($Matches[2]) 刚完成 ($($Matches[1])), 按 Complete 处理"
+            } else {
+              Log "检测到 $($Matches[2]) 刚完成 ($($Matches[1])), 非日收尾组, 保存书签续跑"
+            }
+            break
+          }
         }
       }
     }

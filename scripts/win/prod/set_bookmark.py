@@ -46,14 +46,16 @@ if len(sys.argv) > 1 and sys.argv[1] == "CLEAR":
         log("续跑组已删除")
     sys.exit(0)
 
-# 最新日志文件
+# 最新日志文件 (10-15 修复: 跨午夜场次时最新日志可能是新一天的空文件,
+# 此时往前找上一个有路线记录的日志, 避免误判"无路线" → 从头重跑)
 logs = sorted(glob.glob(os.path.join(LOGDIR, "better-genshin-impact*.log")), key=os.path.getmtime)
 last_route = None
-if logs:
-    text = open(logs[-1], encoding="utf-8", errors="ignore").read()
+for lf in reversed(logs):
+    text = open(lf, encoding="utf-8", errors="ignore").read()
     matches = re.findall(r'开始执行地图追踪任务[:：]\s*"([^"]+)"', text)
     if matches:
         last_route = matches[-1]
+        break
 log(f"日志最后路线: {last_route}")
 
 bookmark = []

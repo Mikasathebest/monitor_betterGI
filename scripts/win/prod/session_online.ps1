@@ -244,27 +244,35 @@ if ($finishedToday) {
   }
   $tailMsg = '本场跳过收集大组 (仅日常+体力)'
 } else {
-  # 今日首场: 清空书签从头跑; 续跑场: 保留书签让 BGI 从断点继续
+  # 今日首场判定 (10-15 修复): collection_started.flag 由本场部署时写入(下方),
+  # 会话崩溃未走下线时 collection_done.txt 仍是昨日 → 旧逻辑只查 done 文件,
+  # 误判"今日首场" → 清书签从头重跑 (10-15 早场 08:17 崩溃后 08:24 恢复 + 13:00 午场 三重从头跑的根因)
   $startedBefore = $false
-  if (Test-Path $collectDoneFile) {
-    $doneDate = (Get-Content $collectDoneFile -Encoding UTF8 -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
-    if ($doneDate -eq $today) { $startedBefore = $true }
+  foreach ($mf in @($collectDoneFile, $collectStartFlag)) {
+    if (Test-Path $mf) {
+      $md = (Get-Content $mf -Encoding UTF8 -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
+      if ($md -eq $today) { $startedBefore = $true; break }
+    }
   }
-  if ($startedBefore -and $bookmarkIdx -gt 0 -and $bookmarkIdx -lt $totalTasks) {
-    Log "今日收集续跑: 从书签 idx $bookmarkIdx / $totalTasks 继续"
-  } elseif ($startedBefore -and $bookmarkIdx -eq 0) {
-    # 今日已启动过但书签为空: 看门狗恢复或 BetterGI_Run 中途重开场次, 从今日日志推导断点
-    # (10-09 教训: 13:00 场次重启后从头重跑, 重复收集松珀香/云岩裂叶/敌人约 1 小时)
-    Log "今日收集恢复: 书签为空, 从今日日志推导断点 (避免从头重复收集)"
+  if ($startedBefore) {
+    # 今日已启动过收集 (续跑/看门狗恢复/崩溃重开): 从日志校准断点, 绝不清书签重跑
+    # (10-09 教训: 13:00 场次重启后从头重跑, 重复收集约 1 小时)
+    Log "今日收集续跑: 书签 idx $bookmarkIdx, 从今日日志校准断点 (避免从头重复收集)"
     $bkOut = & python 'C:\Users\djf20\set_bookmark.py' 2>&1
     $bkOut | ForEach-Object { Log "bookmark: $_" }
+  } elseif ($sessName -eq '午场') {
+    # 早场整场未跑收集 (手动保护/跳过): 优先尾部稀缺材料, 从头启动 B 组
+    Log "午场: 今日收集未启动, 清书签从头启动 收集B组"
+    & python 'C:\Users\djf20\set_bookmark.py' CLEAR 2>&1 | ForEach-Object { Log "bookmark: $_" }
   } else {
-    Log "今日收集从头开始 (全自动循环大组, 共 $totalTasks 条)"
+    # 早场/晚场今日首场: 清书签从头
+    Log "$sessName 今日收集首场, 清空书签从头开始"
     & python 'C:\Users\djf20\set_bookmark.py' CLEAR 2>&1 | ForEach-Object { Log "bookmark: $_" }
   }
   Set-Content $collectStartFlag $today -Encoding UTF8   # 标记本场启动了收集, 下线时据此更新标记
-  # 选启动组: 书签>0 且续跑组文件存在 → 启动"续跑收集组"子组 (BGI nextScheduledTask 反序列化 bug 规避);
-  # 否则启动主组"全自动循环" (书签/续跑组由 set_bookmark.py 在下线时维护)
+  # 选启动组 (10-15 分组: 主组104条 = 收集A组50(早场) + 收集B组54(午场)):
+  #   书签>0 且续跑组文件存在 → "续跑收集组" (BGI nextScheduledTask 反序列化 bug 规避);
+  #   否则按场次: 早场=收集A组, 午场=收集B组, 晚场=主组
   $groupMatch = '全自动循环'
   $resumeGroupFile = 'D:\projects\betterGI\User\ScriptGroup\续跑收集组.json'
   $bk = 0
@@ -276,6 +284,12 @@ if ($finishedToday) {
   if ($bk -gt 0 -and (Test-Path $resumeGroupFile)) {
     $groupMatch = '续跑收集组'
     Log "续跑组文件存在 (书签 idx $bk), 将启动子组: 续跑收集组"
+  } elseif ($sessName -eq '早场') {
+    $groupMatch = '收集A组'
+    Log "无续跑组 (书签 idx $bk), 将启动早场专属组: 收集A组"
+  } elseif ($sessName -eq '午场') {
+    $groupMatch = '收集B组'
+    Log "无续跑组 (书签 idx $bk), 将启动午场专属组: 收集B组"
   } else {
     Log "无续跑组 (书签 idx $bk), 将启动主组: 全自动循环"
   }
