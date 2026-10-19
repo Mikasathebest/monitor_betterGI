@@ -61,6 +61,7 @@ function Skip-IfRelogin($stage) {
 }
 
 Log "=== 定时上线会话开始 (v3) ==="
+Set-Content 'C:\Users\djf20\session_start.txt' (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') -Encoding UTF8
 
 # 0.00 场次时长 (2026-10-12 用户定: 恢复午场; 早 5h / 午 4h / 晚 3h, 每天最长 12h; 跑完由看门狗提前下线)
 #   按触发时刻归属: 04-11 点=早场, 12-17 点=午场 (周末跳过), 其余=晚场 (晚场 23:00+3h=02:00, 不压早场)

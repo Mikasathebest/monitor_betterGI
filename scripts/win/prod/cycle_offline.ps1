@@ -1,6 +1,7 @@
 # 会话下线: 保存进度书签 → 杀游戏+BGI (不自我续链; 下次上线由 BGI_Session 每日定时触发)
-# -Complete:$true = 大组跑完(清空书签, 下轮从头); 默认 = 到点下线(保存书签续跑)
-param([bool]$Complete = $false)
+# -Complete 开关 = 大组跑完(清空书签, 下轮从头); 默认 = 到点下线(保存书签续跑)
+# 10-19: [bool]$Complete 改 [switch] — `& powershell -File X.ps1 -P $true` 布尔传参绑定失败会无日志静默死亡
+param([switch]$Complete)
 $ErrorActionPreference = 'Continue'
 $log = 'C:\Users\djf20\cycle_log.txt'
 # 每日收集标记 (书签续跑机制):
