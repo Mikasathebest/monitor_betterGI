@@ -265,16 +265,24 @@ if ($finishedToday) {
     # 早场整场未跑收集 (手动保护/跳过): 优先尾部稀缺材料, 从头启动 B 组
     Log "午场: 今日收集未启动, 清书签从头启动 收集B组"
     & python 'C:\Users\djf20\set_bookmark.py' CLEAR 2>&1 | ForEach-Object { Log "bookmark: $_" }
-  } else {
-    # 早场/晚场今日首场: 清书签从头
-    Log "$sessName 今日收集首场, 清空书签从头开始"
+  } elseif ($sessName -eq '早场') {
+    # 早场今日首场: 清书签从头
+    Log "早场今日收集首场, 清空书签从头开始"
     & python 'C:\Users\djf20\set_bookmark.py' CLEAR 2>&1 | ForEach-Object { Log "bookmark: $_" }
+  } else {
+    # 10-21 修复: 晚场 + 今日未启动过收集 → 跳过收集, 只跑一条龙
+    # (之前误判晚场为"今日首场"清书签, 又 fallback 到全自动循环 103 条全组重跑
+    #  — 跨午夜看门狗恢复 session 时凌晨跑一遍 00:05→02:54, 午场续跑又跑一遍)
+    Log "晚场 + 今日未启动过收集 → 跳过收集大组, 本场仅日常一条龙 (不启动任何组)"
+    Set-Content $stateFile ("PHASE=RUNNING`nACTIVE_UNTIL=" + $off.ToString('yyyy-MM-dd HH:mm:ss')) -Encoding UTF8
+    Log "=== 上线会话部署完毕 (v3), 本场仅日常一条龙 (下线由 BGI_SessionEnd 兜底) ==="
+    exit 0
   }
   Set-Content $collectStartFlag $today -Encoding UTF8   # 标记本场启动了收集, 下线时据此更新标记
   # 选启动组 (10-15 分组: 主组104条 = 收集A组50(早场) + 收集B组54(午场)):
   #   书签>0 且续跑组文件存在 → "续跑收集组" (BGI nextScheduledTask 反序列化 bug 规避);
-  #   否则按场次: 早场=收集A组, 午场=收集B组, 晚场=主组
-  $groupMatch = '全自动循环'
+  #   否则按场次: 早场=收集A组, 午场=收集B组, 晚场跳过 (10-21 修复)
+  $groupMatch = ''
   $resumeGroupFile = 'D:\projects\betterGI\User\ScriptGroup\续跑收集组.json'
   $bk = 0
   try {
@@ -292,7 +300,11 @@ if ($finishedToday) {
     $groupMatch = '收集B组'
     Log "无续跑组 (书签 idx $bk), 将启动午场专属组: 收集B组"
   } else {
-    Log "无续跑组 (书签 idx $bk), 将启动主组: 全自动循环"
+    # 10-21 修复: 晚场无续跑组 → 跳过收集 (不是全自动循环!)
+    Log "晚场无续跑组 (书签 idx $bk), 跳过收集大组, 本场仅日常一条龙"
+    Set-Content $stateFile ("PHASE=RUNNING`nACTIVE_UNTIL=" + $off.ToString('yyyy-MM-dd HH:mm:ss')) -Encoding UTF8
+    Log "=== 上线会话部署完毕 (v3), 本场仅日常一条龙 (下线由 BGI_SessionEnd 兜底) ==="
+    exit 0
   }
   # BGI 已在跑时其内存书签是启动时加载的旧值, config.json 新写的书签不生效
   # (10-13 午场教训: 早场未正常下线 → BGI 未重启 → 午场无视书签从组头重跑 85 条)

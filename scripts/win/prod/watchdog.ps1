@@ -1,6 +1,6 @@
 # 看门狗 v2 (每 30 分钟由 BGI_Watchdog 触发): 状态快照 + 会话内异常自动恢复
 # 恢复条件: session_state.txt 为 RUNNING 且未到下线点, 但 游戏/BGI 进程缺失 或 BGI 日志静默 >=25 分钟
-# 冷却: 两次恢复间隔 >= 40 分钟, 防止抖动循环
+# 限次: 每日最多恢复 2 次, 间隔 >= 10 分钟, 防止误判(如用户手动玩时关 BGI)反复拉起
 $ErrorActionPreference = 'Continue'
 $log = 'C:\Users\djf20\watchdog_log.txt'
 $stateFile = 'C:\Users\djf20\session_state.txt'
@@ -83,11 +83,19 @@ if ($why -match '日志静默' -and $all) {
   }
 }
 
-# 冷却检查 (避免同一故障反复重启)
+# 恢复限次 (10-21 改): 每日最多 2 次, 间隔 >=10 分钟
+# 背景: 用户手动玩时关掉 BGI, 看门狗误判"进程缺失"每 30min 拉起一次 (10-21 一天拉了 5 次)
+# 文件格式: 每行一条恢复时间戳 yyyy-MM-dd HH:mm:ss, 只统计当日行
+$todayStr = (Get-Date).ToString('yyyy-MM-dd')
+$recTimes = @()
 if (Test-Path $cooldownFile) {
-  $age = [int]((Get-Date) - (Get-Item $cooldownFile).LastWriteTime).TotalMinutes
-  if ($age -lt 40) { Log "需恢复($why)但冷却中 (距上次 ${age} 分钟), 跳过"; return }
+  $recTimes = @(Get-Content $cooldownFile -Encoding UTF8 | Where-Object { $_ -match "^$todayStr (\d{2}):(\d{2}):(\d{2})" } | ForEach-Object { [DateTime]::ParseExact($_, 'yyyy-MM-dd HH:mm:ss', $null) })
 }
-Log "触发自动恢复: $why → 重新拉起 BGI_Session"
-New-Item $cooldownFile -ItemType File -Force | Out-Null
+if ($recTimes.Count -ge 2) { Log "需恢复($why)但今日已恢复 $($recTimes.Count) 次 (上限2), 跳过"; return }
+if ($recTimes.Count -gt 0) {
+  $gap = [int]((Get-Date) - $recTimes[-1]).TotalMinutes
+  if ($gap -lt 10) { Log "需恢复($why)但距上次仅 ${gap} 分钟 (<10), 跳过"; return }
+}
+Log "触发自动恢复 (今日第 $($recTimes.Count + 1)/2 次): $why → 重新拉起 BGI_Session"
+"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File $cooldownFile -Append -Encoding utf8
 schtasks /run /tn BGI_Session | Out-Null

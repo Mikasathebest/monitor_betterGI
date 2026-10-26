@@ -34,6 +34,9 @@ Stop-Process -Name BetterGI -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 Log "游戏与 BGI 已关闭"
 
+# 1.6 组配置批量更新 (跑图赶路角色=玛薇卡 + 战斗策略=自动选择; 幂等; 必须 BGI 关闭后改否则被内存覆盖)
+& python 'C:\Users\djf20\set_travel_config.py' 2>&1 | ForEach-Object { Log "travelcfg: $_" }
+
 # 1.5 大组刚跑完? (检测日志尾 3 分钟内 "配置组 ... 执行结束" → 视为跑完, 走 Complete 清书签)
 if (-not $Complete) {
   try {

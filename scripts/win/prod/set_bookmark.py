@@ -7,6 +7,7 @@
 # 用法: python set_bookmark.py          (保存书签 + 生成续跑组)
 #       python set_bookmark.py CLEAR    (跑完清空, 下轮从头, 删除续跑组)
 import json, re, sys, glob, os
+from datetime import datetime, timedelta
 
 BASE = r"D:\projects\betterGI"
 CFG = os.path.join(BASE, r"User\config.json")
@@ -46,11 +47,27 @@ if len(sys.argv) > 1 and sys.argv[1] == "CLEAR":
         log("续跑组已删除")
     sys.exit(0)
 
-# 最新日志文件 (10-15 修复: 跨午夜场次时最新日志可能是新一天的空文件,
-# 此时往前找上一个有路线记录的日志, 避免误判"无路线" → 从头重跑)
+# 10-21 修复: 按游戏 4 点刷新界过滤日志, 只扫描"今日收集日"的路线
+# (之前扫描全部历史日志, 跨午夜恢复 session 时会拿到前一天全自动循环的尾路线,
+# 误判"全部完成" → 空书签 → session_online fallback 到全自动循环全组重跑)
+now = datetime.now()
+if now.hour < 4:
+    coll_day = (now - timedelta(days=1)).strftime("%Y%m%d")
+else:
+    coll_day = now.strftime("%Y%m%d")
+log(f"收集日 (4点界): {coll_day}")
+
 logs = sorted(glob.glob(os.path.join(LOGDIR, "better-genshin-impact*.log")), key=os.path.getmtime)
 last_route = None
 for lf in reversed(logs):
+    # 从文件名提取日期戳: better-genshin-impact20261021.log → 20261021
+    m = re.search(r'(\d{8})\.log$', lf)
+    if not m:
+        continue
+    file_day = m.group(1)
+    if file_day < coll_day:
+        log(f"跳过旧日志 ({file_day} < {coll_day}): {os.path.basename(lf)}")
+        break   # 文件按 mtime 排序, 一旦小于收集日, 之前的也都是旧的
     text = open(lf, encoding="utf-8", errors="ignore").read()
     matches = re.findall(r'开始执行地图追踪任务[:：]\s*"([^"]+)"', text)
     if matches:
