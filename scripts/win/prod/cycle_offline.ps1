@@ -17,9 +17,20 @@ function Log($msg) { "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg" | Out-File
 Log "=== 会话下线 (Complete=$Complete) ==="
 
 # 0. 已离线则直接跳过 (防止大组提前跑完触发 -Complete 后, 兜底任务二次触发误写书签)
+# 0.1 如果 PHASE≠RUNNING 但游戏在跑 = 用户手动在玩, 绝不杀游戏
 $ys = Get-Process YuanShen -ErrorAction SilentlyContinue
 $bgi = Get-Process BetterGI -ErrorAction SilentlyContinue
+$phase = ''
+if (Test-Path 'C:\Users\djf20\session_state.txt') {
+  $phase = (Get-Content 'C:\Users\djf20\session_state.txt' -Raw -Encoding UTF8) -replace '\s',''
+}
 if (-not $ys -and -not $bgi) { Log "已处于离线状态, 跳过"; exit 0 }
+if ($ys -and $phase -ne 'PHASE=RUNNING') {
+  Log "PHASE=$phase 但游戏在跑 → 用户手动在玩, 跳过不杀"; exit 0
+}
+
+# 0.2 兜底定时器清理 (任何下线都要注销 session_online 预排程的 BGI_SessionEnd once 任务)
+Unregister-ScheduledTask -TaskName 'BGI_SessionEnd' -Confirm:$false -ErrorAction SilentlyContinue
 
 # 0.5 先置状态 OFFLINE (看门狗据此停止恢复尝试); 并清理可能挂死的 session_online 残留进程
 Set-Content 'C:\Users\djf20\session_state.txt' "PHASE=OFFLINE" -Encoding UTF8

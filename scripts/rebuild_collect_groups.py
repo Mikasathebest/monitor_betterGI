@@ -93,7 +93,8 @@ def main():
         keep_pos.update(poss[i] for i in idxs)
         print(f"削减 {cat}: {n} → {keep_n} (保留序号 {idxs})")
 
-    n, keep_n = len(shuijing_pos), SHUIJING_KEEP
+    n = len(shuijing_pos)
+    keep_n = min(SHUIJING_KEEP, n)   # 主组若已提前瘦身, 不能超过实际条数
     idxs = [round(i * n / keep_n) for i in range(keep_n)]
     keep_pos.update(shuijing_pos[i] for i in idxs)
     print(f"削减 水晶块(跨folder合计): {n} → {keep_n} (保留序号 {idxs})")
@@ -125,7 +126,20 @@ def main():
     kept = a + b                        # 主组 = 平衡后的 A+B, 保证书签索引一致
     print(f"树脂监控分布: A={sum(1 for p in a if is_js(p))} B={sum(1 for p in b if is_js(p))}")
 
-    # 3) 重编号 + 落盘
+    # 3) A/B 组首尾挂 背包采集计数 JS (before/after), 主组不挂 (不影响书签索引)
+    def counter(phase):
+        return {
+            "name": "背包采集计数", "folderName": "背包采集计数",
+            # 必须是 JSON 对象: BGI 用 dynamic(ExpandoObject) 反序列化, 写成字符串会抛
+            # InvalidCastException → 整组读取失败、组从调度器列表消失 (11-10 事故)
+            "jsScriptSettingsObject": {"phase": phase},
+            "index": 0, "type": "Javascript", "status": "Enabled", "schedule": "Daily",
+            "runNum": 1, "allowJsNotification": True, "allowJsHTTPHash": "",
+        }
+    a = [counter("before")] + a + [counter("after")]
+    b = [counter("before")] + b + [counter("after")]
+
+    # 4) 重编号 + 落盘
     def renum(lst, start=0):
         for j, p in enumerate(lst):
             p["index"] = start + j

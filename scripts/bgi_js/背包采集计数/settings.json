@@ -1,0 +1,12 @@
+[
+  {
+    "name": "phase",
+    "type": "select",
+    "label": "阶段标记: before=组头采集前 / after=组尾采集后 (组内通过自定义设置覆盖)",
+    "options": [
+      "before",
+      "after"
+    ],
+    "default": "before"
+  }
+]

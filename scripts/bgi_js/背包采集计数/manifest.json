@@ -1,0 +1,11 @@
+{
+  "manifest_version": 1,
+  "name": "背包采集计数",
+  "version": "1.0.0",
+  "bgi_version": "0.66.0",
+  "description": "调用内置 CountInventoryItem 统计收集目标材料数量, 追加写入 inventory_log.jsonl; 收集组头(phase=before)/组尾(phase=after)各跑一次, 供差分统计每轮采集量",
+  "tags": ["计数", "背包", "统计"],
+  "authors": [{ "name": "AI Generated" }],
+  "settings_ui": "settings.json",
+  "main": "main.js"
+}

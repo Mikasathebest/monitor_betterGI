@@ -1,4 +1,4 @@
-# 定时上线会话 v3 (2026-09-17: 去钓鱼 + 接采矿组):
+﻿# 定时上线会话 v3 (2026-09-17: 去钓鱼 + 接采矿组):
 #   手动游戏保护 → 排程下线 → 杀残留 → BGI+截图器 → 游戏 → 2min安静+隐藏点击器进门 → F9
 #   → 等一条龙流程完成标记 (轮询, 上限100min) → UIA 启动"白铁优先"采矿组 → RUNNING
 # 关键设计:
@@ -39,6 +39,18 @@ function Read-NewLog {
   } catch { return '' }
 }
 
+# 等配置组真正加载完成 (以 BGI 日志的 "配置组 "xxx" 加载完成" 为准), 超时返回 $false
+# 11-10 修复: 旧逻辑用 '地图追踪|开始执行|配置组' 匹配, BGI 自己的报错
+# "读取配置组配置时失败" 也含"配置组", 组根本没加载也会被判成功
+function Wait-GroupLoaded($name, $seconds) {
+  $until = (Get-Date).AddSeconds($seconds)
+  while ((Get-Date) -lt $until) {
+    Start-Sleep -Seconds 15
+    if ((Read-NewLog) -match ('配置组\s+"?' + [regex]::Escape($name) + '"?\s+加载完成')) { return $true }
+  }
+  return $false
+}
+
 # 顶号检测: MiHoYoSDK.log 每次进门都会新增一条 "into LoginManager::Login"
 # 被顶号→回门→点击器重进→必多一条登录记录; 轮次内新增≥2 = 用户在其他设备手动登录 → 跳过本轮
 $sdkLog = "$env:USERPROFILE\AppData\LocalLow\miHoYo\" + [char]0x539F + [char]0x795E + "\logs\MiHoYoSDK.log"
@@ -74,6 +86,21 @@ elseif ($h -ge 12 -and $h -lt 18) {
 }
 else { $sessName = '晚场'; $sessHours = 3 }
 Log "场次: $sessName, 窗口 ${sessHours}h"
+
+# 0.00b 领取每日奖励按场次开关 (2026-11-10): 早场 04:15 时当日委托基本都没做完,
+#   一条龙只会记 "未完成或者已领取" 并被判成失败项 (白跑一次补跑 F9), 所以早场关掉,
+#   午场/晚场再领 (委托完成后才有奖励可领)
+$odCfg = "$base\User\OneDragon\默认配置.json"
+try {
+  $t = [System.IO.File]::ReadAllText($odCfg)
+  $want = if ($sessName -eq '早场') { 'false' } else { 'true' }
+  $pat = '("7b2c7f0c-998b-4b82-8854-e33b84c500c7"\s*:\s*)(true|false)'
+  if ([regex]::Match($t, $pat).Groups[2].Value -ne $want) {
+    $t = [regex]::Replace($t, $pat, "`${1}$want")
+    [System.IO.File]::WriteAllText($odCfg, $t, (New-Object System.Text.UTF8Encoding($false)))
+    Log "一条龙: 领取每日奖励 = $want ($sessName)"
+  }
+} catch { Log "一条龙配置改写失败: $($_.Exception.Message)" }
 
 # 0.01 实例锁
 $me = $PID
@@ -142,6 +169,36 @@ Skip-IfRelogin '进门阶段'
 # 7. 重启截图器 (关键: 必须进门后再起 —— 游戏窗口不存在时起截图器会静默失败, F9 随后落空; 09-17 16:10 事故)
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_capture.ps1
 Start-Sleep -Seconds 10
+
+# 7.5 分辨率守卫 (11-08: 游戏被调成全屏 2560x1600(16:10) → BGI 只支持 16:9,
+#     一条龙与地图追踪全部秒失败, 白跑一整场。开局前校验, 非 16:9 直接中止本场)
+try {
+  if (-not ('BgiGameWin' -as [type])) {
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class BgiGameWin { [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; } [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect); }'
+  }
+  $gw = Get-Process YuanShen -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+  if ($gw) {
+    $rect = New-Object BgiGameWin+RECT
+    if ([BgiGameWin]::GetClientRect($gw.MainWindowHandle, [ref]$rect)) {
+      $gwW = $rect.Right - $rect.Left
+      $gwH = $rect.Bottom - $rect.Top
+      if ($gwH -gt 0) {
+        $ratio = $gwW / $gwH
+        if ([math]::Abs($ratio - (16.0 / 9.0)) -gt 0.05) {
+          Log "警告: 游戏分辨率 ${gwW}x${gwH} (比例 $([math]::Round($ratio, 2))) 非 16:9 → BGI 无法执行任何任务, 本场中止 (请改回 2560x1440 或 1920x1080)"
+          Set-Content 'C:\Users\djf20\resolution_warning.txt' "游戏分辨率 ${gwW}x${gwH} 非 16:9, $(Get-Date -Format 'yyyy-MM-dd HH:mm') 跳过了本场" -Encoding UTF8
+          Stop-Process -Name BetterGI -Force -ErrorAction SilentlyContinue
+          Stop-Process -Name YuanShen -Force -ErrorAction SilentlyContinue
+          schtasks /delete /tn BGI_SessionEnd /f 2>&1 | Out-Null
+          Set-Content $stateFile "PHASE=OFFLINE`nACTIVE_UNTIL=" -Encoding UTF8
+          Log "=== 本场因分辨率非 16:9 中止 (未执行任何任务) ==="
+          exit 2
+        }
+        Log "分辨率校验通过: ${gwW}x${gwH} (16:9)"
+      }
+    }
+  } else { Log "警告: 未取到游戏窗口句柄, 跳过分辨率校验" }
+} catch { Log "分辨率校验异常 (忽略): $($_.Exception.Message)" }
 
 # 8. F9 一条龙 + 快速验证 (180s 内日志无增长 = F9 没落上, 补一次)
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\send_f9.ps1
@@ -218,6 +275,15 @@ elseif (-not $done) { Log "警告: 等完成标记超时 (100 分钟), 仍尝试
 $nowDt = Get-Date
 $today = if ($nowDt.Hour -lt 4) { $nowDt.AddDays(-1).ToString('yyyy-MM-dd') } else { $nowDt.ToString('yyyy-MM-dd') }
 
+# 手动补跑覆盖 (11-08): force_group.txt 写好组名 → 本场强制启动该收集组 (读后即删, 一次性)
+$forceFile = 'C:\Users\djf20\force_group.txt'
+$forceGroup = ''
+if (Test-Path $forceFile) {
+  $forceGroup = (Get-Content $forceFile -Encoding UTF8 -Raw).Trim()
+  Remove-Item $forceFile -Force -ErrorAction SilentlyContinue
+  if ($forceGroup) { Log "手动覆盖: 本场强制启动收集组 [$forceGroup]" }
+}
+
 # 读组总任务数 & 书签 (nextScheduledTask[0].Item2 是 1-based index)
 $groupObj = Get-Content $groupJson -Raw -Encoding UTF8 | ConvertFrom-Json
 $totalTasks = $groupObj.projects.Count
@@ -238,10 +304,9 @@ if ($finishedToday) {
   Log "今日收集已全部跑完, 跳过收集大组, 本场仅 F9 一条龙 + 体力监控组"
   for ($i = 1; $i -le 2; $i++) {
     & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_group_named.ps1 -NameMatch '体力监控'
-    Start-Sleep -Seconds 20
-    $new = Read-NewLog
-    if ($new -match '树脂监控|配置组') { Log "体力监控组已启动 (第 $i 次尝试)"; break }
-    Log "第 $i 次启动体力监控组未见日志活动, 重试"
+    $uiaExit = $LASTEXITCODE
+    if ($uiaExit -eq 0 -and (Wait-GroupLoaded '体力监控' 60)) { Log "体力监控组已启动 (第 $i 次尝试)"; break }
+    Log "第 $i 次启动体力监控组失败 (uiaExit=$uiaExit), 重试"
   }
   $tailMsg = '本场跳过收集大组 (仅日常+体力)'
 } else {
@@ -255,7 +320,10 @@ if ($finishedToday) {
       if ($md -eq $today) { $startedBefore = $true; break }
     }
   }
-  if ($startedBefore) {
+  if ($forceGroup) {
+    Log "手动覆盖: 清空书签, 从组头启动 [$forceGroup]"
+    & python 'C:\Users\djf20\set_bookmark.py' CLEAR 2>&1 | ForEach-Object { Log "bookmark: $_" }
+  } elseif ($startedBefore) {
     # 今日已启动过收集 (续跑/看门狗恢复/崩溃重开): 从日志校准断点, 绝不清书签重跑
     # (10-09 教训: 13:00 场次重启后从头重跑, 重复收集约 1 小时)
     Log "今日收集续跑: 书签 idx $bookmarkIdx, 从今日日志校准断点 (避免从头重复收集)"
@@ -290,7 +358,10 @@ if ($finishedToday) {
     $nstArr = @($cfgNow.nextScheduledTask)
     if ($nstArr.Count -gt 0) { $bk = [int]$nstArr[0].Item2 }
   } catch { Log "读取书签失败: $($_.Exception.Message)" }
-  if ($bk -gt 0 -and (Test-Path $resumeGroupFile)) {
+  if ($forceGroup) {
+    $groupMatch = $forceGroup
+    Log "手动覆盖生效, 本场启动组: $groupMatch"
+  } elseif ($bk -gt 0 -and (Test-Path $resumeGroupFile)) {
     $groupMatch = '续跑收集组'
     Log "续跑组文件存在 (书签 idx $bk), 将启动子组: 续跑收集组"
   } elseif ($sessName -eq '早场') {
@@ -313,20 +384,40 @@ if ($finishedToday) {
   if ($bgiProc) {
     Log "BGI 已在运行 (PID $($bgiProc.Id -join ',')), 重启以加载最新书签"
     Stop-Process -Name BetterGI -Force -ErrorAction SilentlyContinue
-    Stop-Process -Name YuanShen -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 6
     schtasks /run /tn BetterGI_Run | Out-Null
     Log "BGI 经 BetterGI_Run 重启, 等 75s"
     Start-Sleep -Seconds 75
+    # 11-10 修复: 重启 BGI 只为重读书签, 不要杀游戏 (旧代码连 YuanShen 一起 Stop → 游戏再也没起来);
+    # 截图器随 BGI 进程消失, 必须补点"启动", 否则 BGI 不联动拉起游戏, 组点了也跑不了
+    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_capture.ps1
+    Start-Sleep -Seconds 10
+    if (-not (Get-Process YuanShen -ErrorAction SilentlyContinue)) {
+      Start-Process $gameExe
+      Log "重启 BGI 后游戏缺失, 已直起游戏"
+      Start-Sleep -Seconds 30
+    }
+    if (-not (Get-Process YuanShen -ErrorAction SilentlyContinue)) {
+      Log "警告: 重启 BGI 后游戏仍未运行, 收集组无法执行"
+    }
   }
+  $groupStarted = $false
   for ($i = 1; $i -le 2; $i++) {
     & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_group_named.ps1 -NameMatch $groupMatch
-    Start-Sleep -Seconds 30
-    $new = Read-NewLog
-    if ($new -match '地图追踪|开始执行|配置组') { Log "农场组已启动 (第 $i 次尝试): $groupMatch"; break }
-    Log "第 $i 次启动农场组未见日志活动, 重试"
+    $uiaExit = $LASTEXITCODE
+    if ($uiaExit -eq 0 -and (Wait-GroupLoaded $groupMatch 60)) {
+      Log "农场组已启动 (第 $i 次尝试): $groupMatch"
+      $groupStarted = $true
+      break
+    }
+    Log "第 $i 次启动农场组失败 (uiaExit=$uiaExit), 重试"
   }
-  $tailMsg = "收集大组运行中 ($groupMatch, 书签续跑)"
+  if ($groupStarted) {
+    $tailMsg = "收集大组运行中 ($groupMatch, 书签续跑)"
+  } else {
+    Log "警告: 收集组 [$groupMatch] 未启动成功 (uiaExit=$uiaExit, 游戏在跑=$([bool](Get-Process YuanShen -ErrorAction SilentlyContinue))), 本场收集未运行"
+    $tailMsg = "收集组启动失败 ($groupMatch, 需人工检查)"
+  }
 }
 
 # 11. PHASE=RUNNING: 看门狗开始监护

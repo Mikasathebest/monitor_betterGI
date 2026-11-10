@@ -83,19 +83,20 @@ if ($why -match '日志静默' -and $all) {
   }
 }
 
-# 恢复限次 (10-21 改): 每日最多 2 次, 间隔 >=10 分钟
+# 恢复限次 (11-10 改): 每日最多 4 次, 间隔 >=10 分钟
 # 背景: 用户手动玩时关掉 BGI, 看门狗误判"进程缺失"每 30min 拉起一次 (10-21 一天拉了 5 次)
+# 11-10 教训: 上限 2 次时, 早场连续两次故障后整场瘫痪 (05:54-09:15 白等), 故放宽到 4
 # 文件格式: 每行一条恢复时间戳 yyyy-MM-dd HH:mm:ss, 只统计当日行
 $todayStr = (Get-Date).ToString('yyyy-MM-dd')
 $recTimes = @()
 if (Test-Path $cooldownFile) {
   $recTimes = @(Get-Content $cooldownFile -Encoding UTF8 | Where-Object { $_ -match "^$todayStr (\d{2}):(\d{2}):(\d{2})" } | ForEach-Object { [DateTime]::ParseExact($_, 'yyyy-MM-dd HH:mm:ss', $null) })
 }
-if ($recTimes.Count -ge 2) { Log "需恢复($why)但今日已恢复 $($recTimes.Count) 次 (上限2), 跳过"; return }
+if ($recTimes.Count -ge 4) { Log "需恢复($why)但今日已恢复 $($recTimes.Count) 次 (上限4), 跳过"; return }
 if ($recTimes.Count -gt 0) {
   $gap = [int]((Get-Date) - $recTimes[-1]).TotalMinutes
   if ($gap -lt 10) { Log "需恢复($why)但距上次仅 ${gap} 分钟 (<10), 跳过"; return }
 }
-Log "触发自动恢复 (今日第 $($recTimes.Count + 1)/2 次): $why → 重新拉起 BGI_Session"
+Log "触发自动恢复 (今日第 $($recTimes.Count + 1)/4 次): $why → 重新拉起 BGI_Session"
 "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File $cooldownFile -Append -Encoding utf8
 schtasks /run /tn BGI_Session | Out-Null
