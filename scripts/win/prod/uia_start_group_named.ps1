@@ -201,3 +201,36 @@ Start-Sleep -Milliseconds 250
 Start-Sleep -Milliseconds 80
 [WinOpN3]::mouse_event(0x4, 0, 0, 0, [IntPtr]::Zero)
 Log "已点击运行 — $NameMatch 应已启动"
+
+# 5. 把游戏切回前台 (11-11 早场事故): BGI 的 OCR/输入类任务要求"原神"是焦点窗口,
+#    本脚本前面 ForceForeground(BGI) 后若不切回来, 整场都会打
+#    "当前获取焦点的窗口为: BetterGI，不是原神，暂停" (实测 55 分钟刷 3300 条, 背包计数 16 种全 null)
+Start-Sleep -Seconds 2
+$gp = Get-Process YuanShen -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $gp) {
+  Log "警告: 未找到 YuanShen 进程, 无法把游戏切回前台"
+} else {
+  $script:gamePid = $gp.Id
+  $script:gameHwnd = [IntPtr]::Zero
+  $script:anyHwnd = [IntPtr]::Zero
+  $cbGame = [WinOpN3+EnumProc]{
+    param($h, $l)
+    $p2 = 0
+    [WinOpN3]::GetWindowThreadProcessId($h, [ref]$p2) | Out-Null
+    if ($p2 -eq $script:gamePid -and [WinOpN3]::IsWindowVisible($h)) {
+      $t = New-Object System.Text.StringBuilder 256
+      [WinOpN3]::GetWindowText($h, $t, 256) | Out-Null
+      if ($t.ToString() -match '原神|Genshin') { $script:gameHwnd = $h }
+      elseif ($t.ToString().Length -gt 0 -and $script:anyHwnd -eq [IntPtr]::Zero) { $script:anyHwnd = $h }
+    }
+    return $true
+  }
+  [WinOpN3]::EnumWindows($cbGame, [IntPtr]::Zero) | Out-Null
+  if ($script:gameHwnd -eq [IntPtr]::Zero) { $script:gameHwnd = $script:anyHwnd }
+  if ($script:gameHwnd -ne [IntPtr]::Zero) {
+    [WinOpN3]::ForceForeground($script:gameHwnd)
+    Log "已把游戏切回前台 (hwnd=$($script:gameHwnd))"
+  } else {
+    Log "警告: 未找到原神窗口, 无法把游戏切回前台"
+  }
+}

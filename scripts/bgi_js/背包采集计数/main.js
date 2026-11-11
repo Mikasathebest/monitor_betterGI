@@ -1,6 +1,6 @@
 // 背包采集计数: 调用 BGI 内置 CountInventoryItem 统计收集目标材料数量
 // 用法: 收集A组/B组 组头(phase=before)、组尾(phase=after)各挂一条,
-//       记录追加到 背包采集计数/inventory_log.jsonl, 由外部脚本差分统计每轮采集量
+//       记录追加到脚本目录下的 inventory_log.jsonl, 由外部脚本差分统计每轮采集量
 // 注意: CountInventoryItem 返回 -2 表示找到了但数字识别失败; 找不到的物品不返回键
 (async function () {
     // ===== 跟踪物品清单 (与收集组内容对应, 2026-11-09) =====
@@ -13,7 +13,9 @@
         "历战的箭簇", "禁咒绘卷", "史莱姆原浆", "隙间之核", "龙冠武士的金哨"
     ];
     const phase = String(settings.phase || "before").trim();
-    const LOG_PATH = "背包采集计数/inventory_log.jsonl";
+    // 相对路径基准就是本脚本所在目录 (User\JsScript\背包采集计数), 不能再带同名前缀
+    // 11-11 早场报错: Could not find a part of the path '...\背包采集计数\背包采集计数\inventory_log.jsonl'
+    const LOG_PATH = "inventory_log.jsonl";
 
     log.info(`背包采集计数[${phase}]: 开始统计 ${ITEMS.length} 种材料`);
 
