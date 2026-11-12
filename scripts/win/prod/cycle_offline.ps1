@@ -22,10 +22,15 @@ $ys = Get-Process YuanShen -ErrorAction SilentlyContinue
 $bgi = Get-Process BetterGI -ErrorAction SilentlyContinue
 $phase = ''
 if (Test-Path 'C:\Users\djf20\session_state.txt') {
-  $phase = (Get-Content 'C:\Users\djf20\session_state.txt' -Raw -Encoding UTF8) -replace '\s',''
+  # 11-12 修复: 状态文件是两行 (PHASE=... / ACTIVE_UNTIL=...), 旧写法整文件去空白后与 'PHASE=RUNNING' 比较
+  # 永远不相等 → 游戏在跑时恒判"用户手动在玩"而不下线。改为只取 PHASE 一行。
+  Get-Content 'C:\Users\djf20\session_state.txt' -Encoding UTF8 | ForEach-Object {
+    if ($_ -match '^PHASE=(.+)$') { $phase = $Matches[1].Trim() }
+  }
 }
 if (-not $ys -and -not $bgi) { Log "已处于离线状态, 跳过"; exit 0 }
-if ($ys -and $phase -ne 'PHASE=RUNNING') {
+# STARTING 也是我们自己的会话 (顶号跳过 / 启动卡死后 BGI_SessionEnd 兜底都在此阶段调用下线), 必须能下线
+if ($ys -and $phase -notin 'RUNNING', 'STARTING') {
   Log "PHASE=$phase 但游戏在跑 → 用户手动在玩, 跳过不杀"; exit 0
 }
 
