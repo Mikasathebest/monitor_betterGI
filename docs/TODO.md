@@ -126,7 +126,7 @@
     或新版本改了格式时会直接抛异常，书签和续跑组都不会生成。
   - 脚本自己的注释（`set_bookmark.py:3-6`）已说明 BGI 读不出 `nextScheduledTask`，续跑实际靠「续跑收集组」文件。
     也就是说写 `config.json` 没有收益，只有风险。
-  - 11-10 新增的「领取每日奖励按场次开关」靠一个写死的任务 GUID（`:96`）做正则替换。
+  - 11-10 新增的「领取每日奖励按场次开关」靠一个写死的任务 GUID（`:97`）做正则替换。
     更新后若该 GUID 或文件结构变化，正则不命中时既不报错也不写日志，开关静默失效。
 - 建议：书签改存自己的文件（如 `C:\Users\djf20\bookmark.json`），不再碰 `config.json`；
   GUID 正则不命中时写一行警告。
@@ -212,7 +212,7 @@
 4. 经 Session 1 跑一次 `uia_start_group_named.ps1 -NameMatch 收集A组 -DryRun`，`cycle_log.txt` 出现「DRYRUN: 已选组」。
 5. 看一眼新版本 BGI 日志，确认这几条文案没变：`一条龙…任务结束`、`配置组 "x" 加载完成`、
    `配置组 "x" 执行结束`、`开始执行地图追踪任务: "x"`，以及时间戳头行格式 `[HH:mm:ss.fff] [INF] 类名`。
-6. `User\OneDragon\默认配置.json` 里「领取每日奖励」的任务 GUID 仍是 `7b2c7f0c-…`（`session_online.ps1:96`）。
+6. `User\OneDragon\默认配置.json` 里「领取每日奖励」的任务 GUID 仍是 `7b2c7f0c-…`（`session_online.ps1:97`）。
 7. `树脂监控_main.js` 用到的 API（`genshin.blessingOfTheWelkinMoon`、`AutoLeyLineOutcropParam`、
    `dispatcher.runAutoLeyLineOutcropTask`）在新版本仍存在。
 8. 关闭 BGI 的自动检查更新，托管期间锁定版本，只在人在场时手动升级。
