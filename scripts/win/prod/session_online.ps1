@@ -51,6 +51,38 @@ function Wait-GroupLoaded($name, $seconds) {
   return $false
 }
 
+# 启动截图器并检查返回值 (P0-3, 11-13): 旧代码 4 处调用都不查 $LASTEXITCODE,
+# "窗口未找到/启动按钮未找到"被无视继续跑。失败自动重试一次, 仍失败返回 $false。
+function Start-CaptureChecked($stage) {
+  & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_capture.ps1
+  $capExit = $LASTEXITCODE
+  if ($capExit -ne 0) {
+    Log "警告: 截图器启动失败 ($stage, exit=$capExit), 5s 后重试一次"
+    Start-Sleep -Seconds 5
+    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_capture.ps1
+    $capExit = $LASTEXITCODE
+  }
+  if ($capExit -ne 0) { Log "警告: 截图器启动两次失败 ($stage, exit=$capExit), 需人工检查" }
+  return ($capExit -eq 0)
+}
+
+# 启动配置组 (P0-2, 11-13): BGI 版本与已验证版本不一致时先 DryRun 校验 UIA 导航链路,
+# 导航失效就不再盲跑 (界面文案硬编码, 0.64.2 曾把"执行"改成"运行"导致全线失效)。
+function Start-GroupChecked($name, $dryFirst) {
+  if ($dryFirst) {
+    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_group_named.ps1 -NameMatch $name -DryRun | Out-Null
+    if ($LASTEXITCODE -ne 0) { Log "DryRun 导航校验失败 ($name), 判定 UIA 链路因版本更新失效, 不再盲跑组"; return $false }
+    Log "DryRun 导航校验通过 ($name)"
+  }
+  for ($i = 1; $i -le 2; $i++) {
+    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_group_named.ps1 -NameMatch $name
+    $uiaExit = $LASTEXITCODE
+    if ($uiaExit -eq 0 -and (Wait-GroupLoaded $name 60)) { Log "组已启动 (第 $i 次尝试): $name"; return $true }
+    Log "第 $i 次启动组失败 (uiaExit=$uiaExit): $name"
+  }
+  return $false
+}
+
 # 顶号检测: MiHoYoSDK.log 每次进门都会新增一条 "into LoginManager::Login"
 # 被顶号→回门→点击器重进→必多一条登录记录; 轮次内新增≥2 = 用户在其他设备手动登录 → 跳过本轮
 $sdkLog = "$env:USERPROFILE\AppData\LocalLow\miHoYo\" + [char]0x539F + [char]0x795E + "\logs\MiHoYoSDK.log"
@@ -87,6 +119,26 @@ elseif ($h -ge 12 -and $h -lt 18) {
 else { $sessName = '晚场'; $sessHours = 3 }
 Log "场次: $sessName, 窗口 ${sessHours}h"
 
+# 0.00a BGI 版本门禁 (P0-2, 11-13): 托管链对界面文案/窗口标题/日志文案全是硬编码, BGI 升级后
+#   任何一处漂移都静默失效。启动时读 FileVersion 写日志; 与已验证版本不一致 → 组启动前先 DryRun。
+$bgiVer = ''
+try { $bgiVer = (Get-Item "$base\BetterGI.exe").VersionInfo.FileVersion } catch { Log "警告: 读取 BGI 版本失败: $($_.Exception.Message)" }
+$verFile = 'C:\Users\djf20\bgi_verified_version.txt'
+$dryRunFirst = $false
+if ($bgiVer) {
+  Log "BGI 版本: $bgiVer"
+  if (Test-Path $verFile) {
+    $verifiedVer = (Get-Content $verFile -Encoding UTF8 -First 1).Trim()
+    if ($verifiedVer -ne $bgiVer) {
+      Log "警告: BGI 版本 $bgiVer ≠ 已验证版本 $verifiedVer → 本场组启动前先 DryRun 校验 UIA 导航"
+      $dryRunFirst = $true
+    }
+  } else {
+    Set-Content $verFile $bgiVer -Encoding UTF8
+    Log "已记录当前 BGI 版本为已验证版本 ($bgiVer)"
+  }
+}
+
 # 0.00b 领取每日奖励按场次开关 (2026-11-10): 早场 04:15 时当日委托基本都没做完,
 #   一条龙只会记 "未完成或者已领取" 并被判成失败项 (白跑一次补跑 F9), 所以早场关掉,
 #   午场/晚场再领 (委托完成后才有奖励可领)
@@ -95,7 +147,11 @@ try {
   $t = [System.IO.File]::ReadAllText($odCfg)
   $want = if ($sessName -eq '早场') { 'false' } else { 'true' }
   $pat = '("7b2c7f0c-998b-4b82-8854-e33b84c500c7"\s*:\s*)(true|false)'
-  if ([regex]::Match($t, $pat).Groups[2].Value -ne $want) {
+  # 11-13 (P1-2): GUID 正则不命中时 BGI 更新可能改了结构, 静默跳过 = 场次开关失效, 必须报出来
+  $mOd = [regex]::Match($t, $pat)
+  if (-not $mOd.Success) {
+    Log "警告: 一条龙配置未命中领取每日奖励 GUID (7b2c7f0c-…), BGI 更新可能已改配置结构, 场次开关未生效!"
+  } elseif ($mOd.Groups[2].Value -ne $want) {
     $t = [regex]::Replace($t, $pat, "`${1}$want")
     [System.IO.File]::WriteAllText($odCfg, $t, (New-Object System.Text.UTF8Encoding($false)))
     Log "一条龙: 领取每日奖励 = $want ($sessName)"
@@ -126,7 +182,18 @@ if ($oldPhase -eq 'OFFLINE' -and $ys0 -and -not $bgi0) {
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\fix_proxy.ps1 | Out-Null
 
 # 1. 排程 场次时长 后强制下线 (安全网)
+# 11-13 (P1-5): 看门狗恢复时写入 session_resume.txt (原 ACTIVE_UNTIL) → 沿用原下线点,
+#   不再"恢复时刻+场次时长"把窗口往后推 (旧: 早场 08:54 恢复 → 下线 13:54 与午场重叠)
 $off = (Get-Date).AddHours($sessHours)
+$resumeFile = 'C:\Users\djf20\session_resume.txt'
+if (Test-Path $resumeFile) {
+  try {
+    $ru = [DateTime]::ParseExact((Get-Content $resumeFile -Encoding UTF8 -First 1).Trim(), 'yyyy-MM-dd HH:mm:ss', $null)
+    if ($ru -gt (Get-Date)) { $off = $ru; Log "恢复会话: 沿用原下线时间 $($ru.ToString('MM-dd HH:mm'))" }
+    else { Log "恢复标记已过期 ($($ru.ToString('MM-dd HH:mm'))), 按场次重新排程" }
+  } catch { Log "恢复标记解析失败, 按场次重新排程" }
+  Remove-Item $resumeFile -Force -ErrorAction SilentlyContinue
+}
 schtasks /create /tn BGI_SessionEnd /tr "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\cycle_offline.ps1" /sc once /st $off.ToString('HH:mm') /sd $off.ToString('dd/MM/yyyy') /rl highest /f | Out-Null
 Log "已预排程下线: $($off.ToString('MM-dd HH:mm'))"
 
@@ -138,11 +205,14 @@ Stop-Process -Name YuanShen -Force -ErrorAction SilentlyContinue
 Stop-Process -Name BetterGI -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 3
 
-# 4. 起 BGI + 截图器
+# 4. 起 BGI + 截图器 (P0-3: 调用检查返回值; 失败则一场全废, 直接中止)
 schtasks /run /tn BetterGI_Run | Out-Null
 Log "BGI 经 BetterGI_Run 启动, 等 75s"
 Start-Sleep -Seconds 75
-& powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_capture.ps1
+if (-not (Start-CaptureChecked '初始启动')) {
+  Log "警告: 截图器无法启动, F9/一条龙必然落空 → 中止本场 (保持 STARTING, 看门狗超时规则接管)"
+  exit 1
+}
 Start-Sleep -Seconds 5
 
 # 5. 起游戏, 安静等 30s (10-12 用户要求缩短: 本机加载快; 截图器已开时 BGI 联动起游戏,
@@ -167,7 +237,8 @@ Log "点击器已停止"
 Skip-IfRelogin '进门阶段'
 
 # 7. 重启截图器 (关键: 必须进门后再起 —— 游戏窗口不存在时起截图器会静默失败, F9 随后落空; 09-17 16:10 事故)
-& powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_capture.ps1
+#    P0-3: 已在运行时新 capture 脚本会返回"已在运行" (exit 0), 不再误报
+Start-CaptureChecked '进门后重启' | Out-Null
 Start-Sleep -Seconds 10
 
 # 7.5 分辨率守卫 (11-08: 游戏被调成全屏 2560x1600(16:10) → BGI 只支持 16:9,
@@ -200,15 +271,23 @@ try {
   } else { Log "警告: 未取到游戏窗口句柄, 跳过分辨率校验" }
 } catch { Log "分辨率校验异常 (忽略): $($_.Exception.Message)" }
 
-# 8. F9 一条龙 + 快速验证 (180s 内日志无增长 = F9 没落上, 补一次)
+# 8. F9 一条龙 + 快速验证 (P1-1, 11-13): 旧判据 "180s 日志新增 ≥200 字符" 太弱 —
+#    截图器/GameLoading/月卡日志都能凑够 200 字符, F9 没落上也判通过 (11-10 下午 6 次"已发送"0 次生效)。
+#    改为匹配一条龙启动的具体文案; 发送前先校验 config.json 的 onedragonHotkey 仍是 F9。
+$odHotkey = ''
+try {
+  $hkObj = Get-Content $configJson -Raw -Encoding UTF8 | ConvertFrom-Json
+  $odHotkey = $hkObj.onedragonHotkey
+} catch { Log "警告: 读取 onedragonHotkey 失败: $($_.Exception.Message)" }
+if ($odHotkey -and $odHotkey -ne 'F9') { Log "警告: config.json onedragonHotkey=$odHotkey (≠F9), 发送的 F9 不会触发一条龙!" }
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\send_f9.ps1
 Log "F9 已触发"
 Read-NewLog | Out-Null   # 锚定偏移: 之后只读新增
 Start-Sleep -Seconds 180
 $probe = Read-NewLog
-if ($probe.Trim().Length -lt 200) {
-  Log "警告: F9 后 180s 日志静默, 补截图器 + 重发 F9"
-  & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_capture.ps1
+if ($probe -notmatch '启用一条龙配置|一条龙任务执行') {
+  Log "警告: F9 后 180s 无一条龙启动记录 (日志 $($probe.Trim().Length) 字符), 补截图器 + 重发 F9"
+  Start-CaptureChecked 'F9补发前' | Out-Null
   Start-Sleep -Seconds 10
   & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\send_f9.ps1
   Start-Sleep -Seconds 120
@@ -287,14 +366,15 @@ if (Test-Path $forceFile) {
   if ($forceGroup) { Log "手动覆盖: 本场强制启动收集组 [$forceGroup]" }
 }
 
-# 读组总任务数 & 书签 (nextScheduledTask[0].Item2 是 1-based index)
+# 读组总任务数 & 书签 (11-13 P1-2: 进度改存 C:\Users\djf20\bookmark.json, item2 为 0-based
+# 由 set_bookmark.py 写入; 旧口径读 config.json nextScheduledTask 的注释 "1-based" 是错的, 一并纠正)
 $groupObj = Get-Content $groupJson -Raw -Encoding UTF8 | ConvertFrom-Json
 $totalTasks = $groupObj.projects.Count
-$cfgObj = Get-Content $configJson -Raw -Encoding UTF8 | ConvertFrom-Json
 $bookmarkIdx = 0
-if ($cfgObj.nextScheduledTask -and $cfgObj.nextScheduledTask.Count -gt 0) {
-  $bookmarkIdx = [int]$cfgObj.nextScheduledTask[0].Item2
-}
+try {
+  $bmObj = Get-Content 'C:\Users\djf20\bookmark.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+  if ($bmObj.item2) { $bookmarkIdx = [int]$bmObj.item2 }
+} catch { }
 
 # 今日是否已全部跑完
 $finishedToday = $false
@@ -305,13 +385,12 @@ if (Test-Path $collectFinishedFile) {
 
 if ($finishedToday) {
   Log "今日收集已全部跑完, 跳过收集大组, 本场仅 F9 一条龙 + 体力监控组"
-  for ($i = 1; $i -le 2; $i++) {
-    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_group_named.ps1 -NameMatch '体力监控'
-    $uiaExit = $LASTEXITCODE
-    if ($uiaExit -eq 0 -and (Wait-GroupLoaded '体力监控' 60)) { Log "体力监控组已启动 (第 $i 次尝试)"; break }
-    Log "第 $i 次启动体力监控组失败 (uiaExit=$uiaExit), 重试"
+  if (Start-GroupChecked '体力监控' $dryRunFirst) {
+    $tailMsg = '本场跳过收集大组 (仅日常+体力)'
+  } else {
+    Log "警告: 体力监控组未启动成功, 需人工检查"
+    $tailMsg = '体力监控组启动失败 (需人工检查)'
   }
-  $tailMsg = '本场跳过收集大组 (仅日常+体力)'
 } else {
   # 今日首场判定 (10-15 修复): collection_started.flag 由本场部署时写入(下方),
   # 会话崩溃未走下线时 collection_done.txt 仍是昨日 → 旧逻辑只查 done 文件,
@@ -349,7 +428,8 @@ if ($finishedToday) {
     Log "=== 上线会话部署完毕 (v3), 本场仅日常一条龙 (下线由 BGI_SessionEnd 兜底) ==="
     exit 0
   }
-  Set-Content $collectStartFlag $today -Encoding UTF8   # 标记本场启动了收集, 下线时据此更新标记
+  # P0-1 (11-13): 收集标记只在组真正启动成功后才写 (旧代码在这就写, 启动失败也不撤销 →
+  #   看门狗见 flag 存在 + 一条龙结束 → 误判 -Complete → 当天收集被跳过)
   # 选启动组 (10-15 分组: 主组104条 = 收集A组50(早场) + 收集B组54(午场)):
   #   书签>0 且续跑组文件存在 → "续跑收集组" (BGI nextScheduledTask 反序列化 bug 规避);
   #   否则按场次: 早场=收集A组, 午场=收集B组, 晚场跳过 (10-21 修复)
@@ -357,10 +437,9 @@ if ($finishedToday) {
   $resumeGroupFile = 'D:\projects\betterGI\User\ScriptGroup\续跑收集组.json'
   $bk = 0
   try {
-    $cfgNow = Get-Content 'D:\projects\betterGI\User\config.json' -Raw -Encoding UTF8 | ConvertFrom-Json
-    $nstArr = @($cfgNow.nextScheduledTask)
-    if ($nstArr.Count -gt 0) { $bk = [int]$nstArr[0].Item2 }
-  } catch { Log "读取书签失败: $($_.Exception.Message)" }
+    $bmNow = Get-Content 'C:\Users\djf20\bookmark.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($bmNow.item2) { $bk = [int]$bmNow.item2 }
+  } catch { Log "读取 bookmark.json 失败: $($_.Exception.Message)" }
   if ($forceGroup) {
     $groupMatch = $forceGroup
     Log "手动覆盖生效, 本场启动组: $groupMatch"
@@ -393,7 +472,7 @@ if ($finishedToday) {
     Start-Sleep -Seconds 75
     # 11-10 修复: 重启 BGI 只为重读书签, 不要杀游戏 (旧代码连 YuanShen 一起 Stop → 游戏再也没起来);
     # 截图器随 BGI 进程消失, 必须补点"启动", 否则 BGI 不联动拉起游戏, 组点了也跑不了
-    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_capture.ps1
+    Start-CaptureChecked '重启BGI后' | Out-Null
     Start-Sleep -Seconds 10
     if (-not (Get-Process YuanShen -ErrorAction SilentlyContinue)) {
       Start-Process $gameExe
@@ -404,22 +483,17 @@ if ($finishedToday) {
       Log "警告: 重启 BGI 后游戏仍未运行, 收集组无法执行"
     }
   }
-  $groupStarted = $false
-  for ($i = 1; $i -le 2; $i++) {
-    & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Users\djf20\uia_start_group_named.ps1 -NameMatch $groupMatch
-    $uiaExit = $LASTEXITCODE
-    if ($uiaExit -eq 0 -and (Wait-GroupLoaded $groupMatch 60)) {
-      Log "农场组已启动 (第 $i 次尝试): $groupMatch"
-      $groupStarted = $true
-      break
-    }
-    Log "第 $i 次启动农场组失败 (uiaExit=$uiaExit), 重试"
-  }
+  $groupStarted = Start-GroupChecked $groupMatch $dryRunFirst
   if ($groupStarted) {
+    # P0-1: 组真正启动成功才写收集标记 (下线时据此更新 done/finished)
+    Set-Content $collectStartFlag $today -Encoding UTF8
     $tailMsg = "收集大组运行中 ($groupMatch, 书签续跑)"
   } else {
-    Log "警告: 收集组 [$groupMatch] 未启动成功 (uiaExit=$uiaExit, 游戏在跑=$([bool](Get-Process YuanShen -ErrorAction SilentlyContinue))), 本场收集未运行"
-    $tailMsg = "收集组启动失败 ($groupMatch, 需人工检查)"
+    Log "警告: 收集组 [$groupMatch] 未启动成功 (游戏在跑=$([bool](Get-Process YuanShen -ErrorAction SilentlyContinue))), 本场收集未运行"
+    $shot = 'C:\Users\djf20\screen.png'
+    if (Test-Path $shot) { Copy-Item $shot ("C:\Users\djf20\collect_fail_" + (Get-Date -Format 'yyyyMMdd_HHmm') + '.png') -Force }
+    Log "警告: 收集组启动失败 → 不写收集标记/不置 RUNNING, 保持 STARTING 退出 (看门狗 STARTING 超时规则接管重试)"
+    exit 1
   }
 }
 

@@ -54,6 +54,8 @@ Log "游戏与 BGI 已关闭"
 & python 'C:\Users\djf20\set_travel_config.py' 2>&1 | ForEach-Object { Log "travelcfg: $_" }
 
 # 1.5 大组刚跑完? (检测日志尾 3 分钟内 "配置组 ... 执行结束" → 视为跑完, 走 Complete 清书签)
+# 11-13 修复 (P2-1): BGI 日志是两行格式 (时间戳头行 + 消息行), 旧正则要求两者同行 → 永不命中, 纯死代码;
+#   外层 catch{} 又吞掉一切异常。改为按看门狗同款两行配对匹配。
 if (-not $Complete) {
   try {
     $f = Get-ChildItem "$base\log\better-genshin-impact*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -61,19 +63,24 @@ if (-not $Complete) {
       $fs = [System.IO.FileStream]::new($f.FullName, 'Open', 'Read', 'ReadWrite')
       $sr = [System.IO.StreamReader]::new($fs, [Text.Encoding]::UTF8)
       $all = $sr.ReadToEnd(); $sr.Close(); $fs.Close()
-      foreach ($ln in (($all -split "`r?`n") | Select-Object -Last 15)) {
-        if ($ln -match '^\[(\d\d:\d\d:\d\d).+配置组\s+"?([^"\r\n]+?)"?\s+执行结束') {
-          $t = [DateTime]::ParseExact($Matches[1], 'HH:mm:ss', $null)
-          $age = (Get-Date) - (Get-Date -Hour $t.Hour -Minute $t.Minute -Second $t.Second)
-          if ($age.TotalMinutes -ge 0 -and $age.TotalMinutes -lt 3) {
-            # 10-15 分组后: 只有日收尾组 (B组/续跑组/主组) 完成才算全天跑完;
-            # 收集A组完成仅代表早场收尾, 体力/采矿组完成更不代表 → 均保存书签续跑 (午场接 B 组)
-            if ($Matches[2] -match '^(收集B组|续跑收集组|全自动循环)$') {
-              $Complete = $true; Log "检测到 $($Matches[2]) 刚完成 ($($Matches[1])), 按 Complete 处理"
-            } else {
-              Log "检测到 $($Matches[2]) 刚完成 ($($Matches[1])), 非日收尾组, 保存书签续跑"
+      $lines = $all -split "`r?`n"
+      $n = $lines.Count
+      for ($i = [Math]::Max(0, $n - 60); $i -lt $n - 1; $i++) {
+        if ($lines[$i] -match '^\[(\d\d):(\d\d):(\d\d)\.') {
+          $tsH = $Matches[1]; $tsM = $Matches[2]; $tsS = $Matches[3]
+          if ($lines[$i + 1] -match '配置组\s+"?([^"\r\n]+?)"?\s+执行结束') {
+            $grpName = $Matches[1]
+            $age = (Get-Date) - (Get-Date -Hour $tsH -Minute $tsM -Second $tsS)
+            if ($age.TotalMinutes -ge 0 -and $age.TotalMinutes -lt 3) {
+              # 10-15 分组后: 只有日收尾组 (B组/续跑组/主组) 完成才算全天跑完;
+              # 收集A组完成仅代表早场收尾, 体力/采矿组完成更不代表 → 均保存书签续跑 (午场接 B 组)
+              if ($grpName -match '^(收集B组|续跑收集组|全自动循环)$') {
+                $Complete = $true; Log "检测到 $grpName 刚完成 (${tsH}:${tsM}:${tsS}), 按 Complete 处理"
+              } else {
+                Log "检测到 $grpName 刚完成 (${tsH}:${tsM}:${tsS}), 非日收尾组, 保存书签续跑"
+              }
+              break
             }
-            break
           }
         }
       }
@@ -81,7 +88,7 @@ if (-not $Complete) {
   } catch { }
 }
 
-# 2. Python 写书签 (从日志找最后路线 → 写 nextScheduledTask 进 config.json)
+# 2. Python 写书签 (从日志找最后路线 → 写进度进 C:\Users\djf20\bookmark.json + 生成续跑组)
 $arg = if ($Complete) { 'CLEAR' } else { '' }
 $out = & python 'C:\Users\djf20\set_bookmark.py' $arg 2>&1
 $out | ForEach-Object { Log "bookmark: $_" }
@@ -100,15 +107,13 @@ if (Test-Path $collectStartFlag) {
     Log "今日收集已全部跑完, 写入完成标记: $today (下场只跑体力监控)"
   } else {
     Set-Content $collectDoneFile $today -Encoding UTF8
-    # 读书签进度写入日志
+    # 读书签进度写入日志 (11-13 P1-2: 进度改存 bookmark.json, 不再读 config.json)
     try {
-      $cfgObj = Get-Content "$base\User\config.json" -Raw -Encoding UTF8 | ConvertFrom-Json
       $groupObj = Get-Content "$base\User\ScriptGroup\全自动循环.json" -Raw -Encoding UTF8 | ConvertFrom-Json
       $totalTasks = $groupObj.projects.Count
       $bk = 0
-      if ($cfgObj.nextScheduledTask -and $cfgObj.nextScheduledTask.Count -gt 0) {
-        $bk = [int]$cfgObj.nextScheduledTask[0].Item2
-      }
+      $bmObj = Get-Content 'C:\Users\djf20\bookmark.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+      if ($bmObj.item2) { $bk = [int]$bmObj.item2 }
       Log "今日收集进度: 书签 idx $bk / $totalTasks, 下场续跑"
     } catch {
       Log "今日收集已启动 (书签续跑)"

@@ -20,6 +20,8 @@ public class WinOpN3 {
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder sb, int max);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, IntPtr e);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
@@ -43,10 +45,13 @@ public class WinOpN3 {
 }
 "@
 
-$proc = Get-Process BetterGI -ErrorAction SilentlyContinue
+# P2-2 (11-13): 存在多个 BetterGI 进程时 $proc.Id 是数组, PID 比较失效 → 只取第一个
+$proc = Get-Process BetterGI -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $proc) { Log "BetterGI 未运行"; exit 1 }
 $targetPid = $proc.Id
+# P2-2 (11-13): 多个窗口标题都含"更好的原神"时取面积最大的 (旧逻辑取枚举到的最后一个, 可能是浮窗)
 $mainHwnd = [IntPtr]::Zero
+$bestArea = 0
 $cb = [WinOpN3+EnumProc]{
   param($h, $l)
   $pid2 = 0
@@ -54,7 +59,13 @@ $cb = [WinOpN3+EnumProc]{
   if ($pid2 -eq $targetPid) {
     $t = New-Object System.Text.StringBuilder 256
     [WinOpN3]::GetWindowText($h, $t, 256) | Out-Null
-    if ([WinOpN3]::IsWindowVisible($h) -and $t.ToString() -match '更好的原神') { $script:mainHwnd = $h }
+    if ([WinOpN3]::IsWindowVisible($h) -and $t.ToString() -match '更好的原神') {
+      $r = New-Object WinOpN3+RECT
+      if ([WinOpN3]::GetWindowRect($h, [ref]$r)) {
+        $a = ($r.Right - $r.Left) * ($r.Bottom - $r.Top)
+        if ($a -gt $script:bestArea) { $script:bestArea = $a; $script:mainHwnd = $h }
+      }
+    }
   }
   return $true
 }
@@ -98,9 +109,14 @@ foreach ($w in $dlgWins) {
     if (-not $clicked) {
       [WinOpN3]::SetForegroundWindow($dh) | Out-Null
       Start-Sleep -Milliseconds 500
-      [WinOpN3]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero)
-      [WinOpN3]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero)
-      Log "已发 ESC 关弹窗"
+      # P2-2 (11-13): ESC 发给的是前台窗口 — 前台不是该弹窗时绝不发 (旧逻辑会把游戏切到派蒙菜单)
+      if ([WinOpN3]::GetForegroundWindow() -eq $dh) {
+        [WinOpN3]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero)
+        [WinOpN3]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero)
+        Log "已发 ESC 关弹窗"
+      } else {
+        Log "弹窗 '$dtitle' 未能置前, 跳过 ESC (避免误伤前台窗口)"
+      }
     }
   }
   Start-Sleep -Seconds 1
