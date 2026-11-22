@@ -3,19 +3,19 @@
 //       记录追加到脚本目录下的 inventory_log.jsonl, 由外部脚本差分统计每轮采集量
 // 注意: CountInventoryItem 返回 -2 表示找到了但数字识别失败; 找不到的物品不返回键
 (async function () {
-    // ===== 跟踪物品清单 (与收集组内容对应, 2026-11-09) =====
+    // ===== 跟踪物品清单 (与收集组内容对应, 2026-11-19: 移除琉鳞石/慕风蘑菇, 新增小灯草/落落莓/夜泊石) =====
     const ITEMS = [
         // 特产
-        "清水玉", "幽灯蕈", "琉鳞石", "风车菊", "慕风蘑菇",
+        "清水玉", "小灯草", "落落莓", "妖精绿艾", "析晶褶伞",
         // 矿石
-        "水晶块", "紫晶块", "虹滴晶", "星银矿石", "白铁块", "铁块",
-        // 敌人掉落 (T3)
-        "历战的箭簇", "禁咒绘卷", "史莱姆原浆", "隙间之核", "龙冠武士的金哨"
+        "水晶块", "紫晶块", "虹滴晶", "星银矿石", "白铁块", "铁块", "夜泊石",
+        // 敌人掉落 (T3: 肌生晶石的妖精 / 先驱秘源统辖阵列)
+        "幻造晶鳞石", "无秽的月铁"
     ];
     const phase = String(settings.phase || "before").trim();
-    // 相对路径基准就是本脚本所在目录 (User\JsScript\背包采集计数), 不能再带同名前缀
-    // 11-11 早场报错: Could not find a part of the path '...\背包采集计数\背包采集计数\inventory_log.jsonl'
-    const LOG_PATH = "inventory_log.jsonl";
+    // 绝对路径避免 BGI 不同 file 方法解析相对路径基准不一致导致落盘失败
+    // 部署位置固定为 D:\projects\betterGI\User\JsScript\背包采集计数\
+    const LOG_PATH = "D:/projects/betterGI/User/JsScript/背包采集计数/inventory_log.jsonl";
 
     log.info(`背包采集计数[${phase}]: 开始统计 ${ITEMS.length} 种材料`);
 
@@ -45,9 +45,12 @@
     const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     const rec = { time: ts, phase: phase, counts: counts };
 
-    let old = "";
-    try { old = file.ReadTextSync(LOG_PATH); } catch (e) { /* 首次为空 */ }
-    file.WriteTextSync(LOG_PATH, old + JSON.stringify(rec) + "\r\n");
+    // AppendAllText 会自动创建文件; 不再先读后写, 避免 ReadTextSync 抛异常污染日志
+    try {
+        file.AppendAllText(LOG_PATH, JSON.stringify(rec) + "\r\n");
+    } catch (e) {
+        log.error("写入 inventory_log.jsonl 失败: " + (e && e.message));
+    }
 
     const got = Object.keys(counts).filter(k => counts[k] !== null).length;
     log.info(`背包采集计数[${phase}] 已记录 ${got}/${ITEMS.length} 种: ${JSON.stringify(counts)}`);

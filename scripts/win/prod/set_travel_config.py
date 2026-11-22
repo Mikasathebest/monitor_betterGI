@@ -7,7 +7,7 @@
 import json, os
 
 BASE = r'D:\projects\betterGI\User\ScriptGroup'
-GROUPS = ['收集A组', '收集B组', '全自动循环', '续跑收集组']
+GROUPS = ['收集A组', '收集B组', '全自动循环', '续跑收集组', '体力监控', '白铁优先', '钓鱼', '采矿']
 
 for name in GROUPS:
     fp = os.path.join(BASE, name + '.json')

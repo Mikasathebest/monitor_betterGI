@@ -1,30 +1,52 @@
 # -*- coding: utf-8 -*-
-"""背包采集计数报告: 读取 BGI 侧 inventory_log.jsonl, 配对 before/after 输出每轮采集增量。
+"""背包采集计数报告: 解析 BGI 日志中的计数记录, 配对 before/after 输出每轮采集增量。
 
 用法:  python scripts/inventory_report.py [最近场次数, 默认 6]
-日志:  D:\\projects\\betterGI\\User\\JsScript\\背包采集计数\\inventory_log.jsonl
+日志:  D:\\projects\\betterGI\\log\\better-genshin-impact*.log
 说明:  counts 值 -2 = 数字识别失败; null = 该物品在背包未找到(视为 0 处理, 用 · 标注)
 """
 import json
+import re
 import sys
 from pathlib import Path
 
-LOG = Path(r"D:\projects\betterGI\User\JsScript\背包采集计数\inventory_log.jsonl")
+LOG_DIR = Path(r"D:\projects\betterGI\log")
+LOG_NAME_RE = re.compile(r"^better-genshin-impact(\d{8})\.log$")
+TS_RE = re.compile(r"^\[(\d{2}:\d{2}:\d{2})\.\d+\]")
+COUNT_RE = re.compile(r"背包采集计数\[(before|after)\]\s+已记录\s+\d+/\d+\s+种:\s*(\{.*\})")
 
 
 def load():
-    if not LOG.exists():
-        print(f"暂无日志: {LOG}")
+    logs = []
+    for path in LOG_DIR.glob("better-genshin-impact*.log"):
+        match = LOG_NAME_RE.match(path.name)
+        if match:
+            logs.append((match.group(1), path))
+    if not logs:
+        print(f"暂无日志: {LOG_DIR / 'better-genshin-impact*.log'}")
         sys.exit(0)
+
     recs = []
-    for ln, line in enumerate(LOG.read_text(encoding="utf-8").splitlines(), 1):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            recs.append(json.loads(line))
-        except json.JSONDecodeError:
-            print(f"第{ln}行解析失败, 已跳过")
+    for day, path in sorted(logs):
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        # BGI 日志为两行格式: 时间戳头行的下一行才是计数正文
+        for i in range(len(lines) - 1):
+            ts = TS_RE.match(lines[i])
+            if not ts:
+                continue
+            match = COUNT_RE.search(lines[i + 1])
+            if not match:
+                continue
+            try:
+                counts = json.loads(match.group(2))
+            except json.JSONDecodeError:
+                print(f"{path.name} 第{i + 2}行计数 JSON 解析失败, 已跳过")
+                continue
+            recs.append({
+                "time": f"{day[:4]}-{day[4:6]}-{day[6:]} {ts.group(1)}",
+                "phase": match.group(1),
+                "counts": counts,
+            })
     return recs
 
 
