@@ -206,6 +206,8 @@ Stop-Process -Name BetterGI -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 3
 
 # 4. 起 BGI + 截图器 (P0-3: 调用检查返回值; 失败则一场全废, 直接中止)
+# 4.0 启动前静音系统, 避免夜间游戏声音打扰 (2026-11-22)
+try { & "$PSScriptRoot\mute_system.ps1" | Out-Null } catch { Log "警告: 系统静音失败: $($_.Exception.Message)" }
 schtasks /run /tn BetterGI_Run | Out-Null
 Log "BGI 经 BetterGI_Run 启动, 等 75s"
 Start-Sleep -Seconds 75
@@ -467,6 +469,7 @@ if ($finishedToday) {
     Log "BGI 已在运行 (PID $($bgiProc.Id -join ',')), 重启以加载最新书签"
     Stop-Process -Name BetterGI -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 6
+    try { & "$PSScriptRoot\mute_system.ps1" | Out-Null } catch { Log "警告: 系统静音失败: $($_.Exception.Message)" }
     schtasks /run /tn BetterGI_Run | Out-Null
     Log "BGI 经 BetterGI_Run 重启, 等 75s"
     Start-Sleep -Seconds 75
