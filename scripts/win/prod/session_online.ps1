@@ -170,11 +170,13 @@ if (Test-Path $stateFile) {
   Get-Content $stateFile -Encoding UTF8 | ForEach-Object { if ($_ -match '^PHASE=(.+)$') { $oldPhase = $Matches[1].Trim() } }
 }
 
-# 0.03 手动游戏保护: OFFLINE + 游戏在跑 + BGI 没在跑 = 用户自己开的游戏 → 跳过本场次
+# 0.03 手动游戏保护 (用户规则 2026-11-24): 游戏在跑 + BGI 没在跑 = 用户在手动玩
+#   → 跳过本场次, 绝不在下方 Stop-Process YuanShen 杀掉用户正在玩的游戏
+#   (旧版仅在 PHASE=OFFLINE 时判定; 看门狗恢复路径 oldPhase=RUNNING 会漏判 → 游戏被强杀)
 $ys0 = Get-Process YuanShen -ErrorAction SilentlyContinue
 $bgi0 = Get-Process BetterGI -ErrorAction SilentlyContinue
-if ($oldPhase -eq 'OFFLINE' -and $ys0 -and -not $bgi0) {
-  Log "检测到手动游戏 (PHASE=OFFLINE, 游戏在跑, BGI 未跑), 跳过本场次, 不杀游戏"
+if ($ys0 -and -not $bgi0) {
+  Log "检测到手动游戏 (游戏在跑, BGI 未跑, 旧PHASE=$oldPhase) → 跳过本场次, 不杀游戏"
   exit 0
 }
 

@@ -1,4 +1,4 @@
-# 看门狗 v2 (每 30 分钟由 BGI_Watchdog 触发): 状态快照 + 会话内异常自动恢复
+﻿# 看门狗 v2 (每 30 分钟由 BGI_Watchdog 触发): 状态快照 + 会话内异常自动恢复
 # 恢复条件: session_state.txt 为 RUNNING 且未到下线点, 但 游戏/BGI 进程缺失 或 BGI 日志静默 >=25 分钟
 # 限次: 每日最多恢复 2 次, 间隔 >= 10 分钟, 防止误判(如用户手动玩时关 BGI)反复拉起
 $ErrorActionPreference = 'Continue'
@@ -41,6 +41,14 @@ $st = @{}
 Get-Content $stateFile -Encoding UTF8 | ForEach-Object { $kv = $_ -split '=', 2; if ($kv.Count -eq 2) { $st[$kv[0]] = $kv[1] } }
 $phase = $st['PHASE']
 if ($phase -notin 'RUNNING', 'STARTING') { return }              # 离线等其他状态不干预
+
+# 用户规则 (2026-11-24): BGI 被关 + 原神还在跑 = 用户在手动玩 → 不恢复、不杀游戏
+# 恢复会拉起 session_online, 它会 Stop-Process YuanShen 强杀游戏 (手动玩时绝不能发生);
+# 只有游戏也关了 (game=False) 才是真故障/会话结束, 走下方恢复逻辑
+if ($ys -and -not $bgi) {
+  Log "检测到手动游戏 (游戏在跑, BGI 未跑) → 用户手动玩, 跳过自动恢复, 不杀游戏"
+  return
+}
 
 # P0-4 (11-13): STARTING 阶段卡死保护 — session_online 等一条龙期间每 2min 轮询,
 # 日志静默 ≥25min 会自行置 RUNNING; 只有它本身挂死才会永远停在 STARTING (旧版对此一律不管,

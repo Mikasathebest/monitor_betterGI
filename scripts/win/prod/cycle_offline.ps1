@@ -1,4 +1,4 @@
-# 会话下线: 保存进度书签 → 杀游戏+BGI (不自我续链; 下次上线由 BGI_Session 每日定时触发)
+﻿# 会话下线: 保存进度书签 → 杀游戏+BGI (不自我续链; 下次上线由 BGI_Session 每日定时触发)
 # -Complete 开关 = 大组跑完(清空书签, 下轮从头); 默认 = 到点下线(保存书签续跑)
 # 10-19: [bool]$Complete 改 [switch] — `& powershell -File X.ps1 -P $true` 布尔传参绑定失败会无日志静默死亡
 param([switch]$Complete)
@@ -32,6 +32,12 @@ if (-not $ys -and -not $bgi) { Log "已处于离线状态, 跳过"; exit 0 }
 # STARTING 也是我们自己的会话 (顶号跳过 / 启动卡死后 BGI_SessionEnd 兜底都在此阶段调用下线), 必须能下线
 if ($ys -and $phase -notin 'RUNNING', 'STARTING') {
   Log "PHASE=$phase 但游戏在跑 → 用户手动在玩, 跳过不杀"; exit 0
+}
+# 用户规则 (2026-11-24): 游戏在跑 + BGI 未跑 = 用户手动玩 → 绝不杀游戏 (PHASE=RUNNING 时上方守卫不生效)
+if ($ys -and -not $bgi) {
+  Log "检测到手动游戏 (游戏在跑, BGI 未跑) → 用户手动玩, 跳过下线, 不杀游戏"
+  Set-Content 'C:\Users\djf20\session_state.txt' "PHASE=OFFLINE" -Encoding UTF8
+  exit 0
 }
 
 # 0.2 兜底定时器清理 (任何下线都要注销 session_online 预排程的 BGI_SessionEnd once 任务)
